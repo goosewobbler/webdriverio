@@ -10,7 +10,7 @@ import {
 } from '../constants.js'
 import {
     convertPackageHashToObject, getAnswers, getPathForFileGeneration, getProjectProps,
-    getProjectRoot, createPackageJSON, setupTypeScript, setupBabel, npmInstall,
+    getProjectRoot, createPackageJSON, npmInstall,
     createWDIOConfig, createWDIOScript, runAppiumInstaller, getSerenityPackages
 } from '../utils.js'
 import type { ConfigCommandArguments, ParsedAnswers } from '../types.js'
@@ -143,8 +143,6 @@ export async function runConfigCommand(parsedAnswers: ParsedAnswers, npmTag: str
     console.log('\n')
 
     await createPackageJSON(parsedAnswers)
-    await setupTypeScript(parsedAnswers)
-    await setupBabel(parsedAnswers)
     await npmInstall(parsedAnswers, npmTag)
     await createWDIOConfig(parsedAnswers)
     await createWDIOScript(parsedAnswers)

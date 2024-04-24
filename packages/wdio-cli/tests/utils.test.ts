@@ -27,14 +27,11 @@ import {
     hasPackage,
     specifyVersionIfNeeded,
     getProjectRoot,
-    detectCompiler,
     getAnswers,
     getProjectProps,
     runProgram,
     createPackageJSON,
     npmInstall,
-    setupTypeScript,
-    setupBabel,
     createWDIOConfig,
     createWDIOScript,
     runAppiumInstaller,
@@ -787,20 +784,6 @@ test('hasBabelConfig', async () => {
     expect(await hasBabelConfig('/foo')).toBe(false)
 })
 
-test('detectCompiler', async () => {
-    vi.mocked(fs.access).mockResolvedValue({} as any)
-    expect(await detectCompiler({} as any)).toBe(CompilerOptions.Babel)
-    vi.mocked(fs.access).mockRejectedValue(new Error('not found'))
-    expect(await detectCompiler({} as any)).toBe(CompilerOptions.Nil)
-    vi.mocked(fs.access).mockImplementation((path) => {
-        if (path.toString().includes('tsconfig')) {
-            return Promise.resolve({} as any)
-        }
-        return Promise.reject(new Error('ouch'))
-    })
-    expect(await detectCompiler({} as any)).toBe(CompilerOptions.TS)
-})
-
 test('getAnswers', async () => {
     let answers = await getAnswers(true)
     delete answers.pages // delete so it doesn't fail in Windows
@@ -888,85 +871,6 @@ test('not npmInstall', async () => {
     await npmInstall(parsedAnswers, 'next')
     expect(installPackages).toBeCalledTimes(0)
     expect(vi.mocked(console.log).mock.calls[0][0]).toContain('To install dependencies, execute')
-})
-
-test('setupTypeScript', async () => {
-    await setupTypeScript({} as any)
-    expect(fs.writeFile).toBeCalledTimes(0)
-    const parsedAnswers = {
-        isUsingTypeScript: true,
-        esmSupport: true,
-        rawAnswers: {
-            framework: 'foo',
-            services: [
-                'wdio-foobar-service$--$foobar',
-                'wdio-electron-service$--$electron'
-            ]
-        },
-        packagesToInstall: [],
-        tsConfigFilePath: '/foobar/tsconfig.json'
-    } as any
-    await setupTypeScript(parsedAnswers)
-    expect(vi.mocked(fs.writeFile).mock.calls[0][1]).toMatchSnapshot()
-    expect(parsedAnswers.packagesToInstall).toEqual(['ts-node', 'typescript'])
-})
-
-test('setupTypeScript does not create tsconfig.json if TypeScript was not selected', async () => {
-    const parsedAnswers = {
-        isUsingTypeScript: false,
-        esmSupport: true,
-        rawAnswers: {
-            framework: 'foo',
-            services: [
-                'wdio-foobar-service$--$foobar',
-                'wdio-electron-service$--$electron'
-            ]
-        },
-        packagesToInstall: [],
-        tsConfigFilePath: '/foobar/tsconfig.json'
-    } as any
-    await setupTypeScript(parsedAnswers)
-    expect(fs.writeFile).not.toBeCalled()
-    expect(parsedAnswers.packagesToInstall).toEqual([])
-})
-
-test('setupTypeScript does not create tsconfig.json if there is already one', async () => {
-    const parsedAnswers = {
-        isUsingTypeScript: true,
-        esmSupport: true,
-        rawAnswers: {
-            framework: 'foo',
-            services: [
-                'wdio-foobar-service$--$foobar',
-                'wdio-electron-service$--$electron'
-            ]
-        },
-        packagesToInstall: [],
-        tsConfigFilePath: '/foobar/tsconfig.json',
-        hasRootTSConfig: true
-    } as any
-    await setupTypeScript(parsedAnswers)
-    expect(fs.writeFile).not.toBeCalled()
-    expect(parsedAnswers.packagesToInstall).toEqual(['ts-node'])
-})
-
-test('setup Babel', async () => {
-    await setupBabel({} as any)
-    expect(fs.writeFile).toBeCalledTimes(0)
-    const parsedAnswers = {
-        isUsingBabel: true,
-        rawAnswers: {
-            framework: 'foo',
-            services: []
-        },
-        packagesToInstall: [],
-        projectRootDir: '/foobar'
-    } as any
-    vi.mocked(fs.access).mockRejectedValue(new Error('foo'))
-    await setupBabel(parsedAnswers)
-    expect(vi.mocked(fs.writeFile).mock.calls[0][1]).toMatchSnapshot()
-    expect(parsedAnswers.packagesToInstall).toEqual(
-        ['@babel/register', '@babel/core', '@babel/preset-env'])
 })
 
 test('createWDIOConfig', async () => {

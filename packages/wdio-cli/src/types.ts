@@ -97,9 +97,9 @@ export interface RunCommandArguments {
     mochaOpts?: WebdriverIO.MochaOpts
     jasmineOpts?: WebdriverIO.JasmineOpts
     cucumberOpts?: WebdriverIO.CucumberOpts
-    autoCompileOpts?: Options.AutoCompileConfig
     configPath: string
     updateSnapshots?: Options.Testrunner['updateSnapshots']
+    tsxTsconfigPath?: string
 
     /**
      * @internal

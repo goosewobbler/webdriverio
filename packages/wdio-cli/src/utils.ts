@@ -28,7 +28,6 @@ import {
     pkg,
     QUESTIONNAIRE,
     TESTING_LIBRARY_PACKAGES,
-    COMMUNITY_PACKAGES_WITH_TS_SUPPORT,
     usesSerenity,
     PMs,
 } from './constants.js'
@@ -352,19 +351,6 @@ export function hasBabelConfig(rootDir: string) {
         (results) => results.filter(Boolean).length > 1,
         () => false
     )
-}
-
-/**
- * detect if project has a compiler file
- */
-export async function detectCompiler(answers: Questionnair) {
-    const root = await getProjectRoot(answers)
-    const rootTSConfigExist = await fs.access(path.resolve(root, 'tsconfig.json')).then(() => true, () => false)
-    return (await hasBabelConfig(root))
-        ? CompilerOptions.Babel // default to Babel
-        : rootTSConfigExist
-            ? CompilerOptions.TS // default to TypeScript
-            : CompilerOptions.Nil // default to no compiler
 }
 
 /**
@@ -840,175 +826,9 @@ export function detectPackageManager(argv = process.argv) {
     )) || 'npm'
 }
 
-/**
- * add ts-node if TypeScript is desired but not installed
- */
-export async function setupTypeScript(parsedAnswers: ParsedAnswers) {
-    /**
-     * don't create a `tsconfig.json` if user doesn't want to use TypeScript
-     */
-    if (!parsedAnswers.isUsingTypeScript) {
-        return
-    }
-
-    /**
-     * don't set up TypeScript if a `tsconfig.json` already exists but ensure we install `ts-node`
-     * as it is a requirement for running TypeScript tests
-     */
-    if (parsedAnswers.hasRootTSConfig) {
-        parsedAnswers.packagesToInstall.push('ts-node')
-        return
-    }
-
-    console.log('Setting up TypeScript...')
-    const frameworkPackage = convertPackageHashToObject(parsedAnswers.rawAnswers.framework)
-    const servicePackages = parsedAnswers.rawAnswers.services.map((service) => convertPackageHashToObject(service))
-    parsedAnswers.packagesToInstall.push('ts-node', 'typescript')
-    const serenityTypes = parsedAnswers.serenityAdapter === 'jasmine' ? ['jasmine'] : []
-
-    const types = [
-        'node',
-        '@wdio/globals/types',
-        'expect-webdriverio',
-        ...(parsedAnswers.serenityAdapter ? serenityTypes : [frameworkPackage.package]),
-        ...(parsedAnswers.runner === 'browser' ? ['@wdio/browser-runner'] : []),
-        ...servicePackages
-            .map(service => service.package)
-            .filter(service => (
-                /**
-                 * given that we know that all "official" services have
-                 * typescript support we only include them
-                 */
-                service.startsWith('@wdio') ||
-                /**
-                 * also include community maintained packages with known
-                 * support for TypeScript
-                 */
-                COMMUNITY_PACKAGES_WITH_TS_SUPPORT.includes(service)
-            ))
-    ]
-
-    const preset = getPreset(parsedAnswers)
-    const config = {
-        compilerOptions: {
-            // compiler
-            moduleResolution: 'node',
-            module: !parsedAnswers.esmSupport ? 'commonjs' : 'ESNext',
-            target: 'es2022',
-            lib: ['es2022', 'dom'],
-            types,
-            skipLibCheck: true,
-            // bundler
-            noEmit: true,
-            allowImportingTsExtensions: true,
-            resolveJsonModule: true,
-            isolatedModules: true,
-            // linting
-            strict: true,
-            noUnusedLocals: true,
-            noUnusedParameters: true,
-            noFallthroughCasesInSwitch: true,
-            ...Object.assign(
-                preset === 'lit'
-                    ? {
-                        experimentalDecorators: true,
-                        useDefineForClassFields: false
-                    }
-                    : {},
-                preset === 'react'
-                    ? {
-                        jsx: 'react-jsx'
-                    }
-                    : {},
-                preset === 'preact'
-                    ? {
-                        jsx: 'react-jsx',
-                        jsxImportSource: 'preact'
-                    }
-                    : {},
-                preset === 'solid'
-                    ? {
-                        jsx: 'preserve',
-                        jsxImportSource: 'solid-js'
-                    }
-                    : {},
-                preset === 'stencil'
-                    ? {
-                        experimentalDecorators: true,
-                        jsx: 'react',
-                        jsxFactory: 'h',
-                        jsxFragmentFactory: 'Fragment'
-                    }
-                    : {}
-            )
-        },
-        include: preset === 'svelte'
-            ? ['src/**/*.d.ts', 'src/**/*.ts', 'src/**/*.js', 'src/**/*.svelte']
-            : preset === 'vue'
-                ? ['src/**/*.ts', 'src/**/*.d.ts', 'src/**/*.tsx', 'src/**/*.vue']
-                : ['test', 'wdio.conf.ts']
-    }
-    await fs.mkdir(path.dirname(parsedAnswers.tsConfigFilePath), { recursive: true })
-    await fs.writeFile(
-        parsedAnswers.tsConfigFilePath,
-        JSON.stringify(config, null, 4)
-    )
-
-    console.log(chalk.green(chalk.bold('✔ Success!\n')))
-}
-
 function getPreset (parsedAnswers: ParsedAnswers) {
     const isUsingFramework = typeof parsedAnswers.preset === 'string'
     return isUsingFramework ? (parsedAnswers.preset || 'lit') : ''
-}
-
-/**
- * add @babel/register package if not installed
- */
-export async function setupBabel(parsedAnswers: ParsedAnswers) {
-    if (!parsedAnswers.isUsingBabel) {
-        return
-    }
-
-    if (!await hasPackage('@babel/register')) {
-        parsedAnswers.packagesToInstall.push('@babel/register')
-    }
-
-    /**
-     * setup Babel if no config file exists
-     */
-    const hasBabelConfig = await Promise.all([
-        fs.access(path.join(parsedAnswers.projectRootDir, 'babel.js')),
-        fs.access(path.join(parsedAnswers.projectRootDir, 'babel.cjs')),
-        fs.access(path.join(parsedAnswers.projectRootDir, 'babel.mjs')),
-        fs.access(path.join(parsedAnswers.projectRootDir, '.babelrc'))
-    ]).then(
-        (results) => results.filter(Boolean).length > 1,
-        () => false
-    )
-
-    if (!hasBabelConfig) {
-        console.log('Setting up Babel project...')
-        if (!await hasPackage('@babel/core')) {
-            parsedAnswers.packagesToInstall.push('@babel/core')
-        }
-        if (!await hasPackage('@babel/preset-env')) {
-            parsedAnswers.packagesToInstall.push('@babel/preset-env')
-        }
-        await fs.writeFile(
-            path.join(process.cwd(), 'babel.config.js'),
-            `module.exports = ${JSON.stringify({
-                presets: [
-                    ['@babel/preset-env', {
-                        targets: {
-                            node: 18
-                        }
-                    }]
-                ]
-            }, null, 4)}`
-        )
-        console.log(chalk.green(chalk.bold('✔ Success!\n')))
-    }
 }
 
 export async function createWDIOConfig(parsedAnswers: ParsedAnswers) {

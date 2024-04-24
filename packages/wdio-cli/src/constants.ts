@@ -5,7 +5,6 @@ import { HOOK_DEFINITION } from '@wdio/utils'
 import type { Options, Services, Reporters, Capabilities } from '@wdio/types'
 
 import {
-    detectCompiler,
     getDefaultFiles,
     convertPackageHashToObject,
     getProjectRoot,
@@ -477,20 +476,6 @@ export const QUESTIONNAIRE = [{
 
         return SUPPORTED_PACKAGES.framework
     }
-}, {
-    type: 'list',
-    name: 'isUsingCompiler',
-    message: 'Do you want to use a compiler?',
-    choices: (answers: Questionnair) => {
-        /**
-         * StencilJS only supports TypeScript
-         */
-        if (answers.preset && answers.preset.includes('stencil')) {
-            return [CompilerOptions.TS]
-        }
-        return Object.values(CompilerOptions)
-    },
-    default: /* istanbul ignore next */ (answers: Questionnair) => detectCompiler(answers)
 }, {
     type: 'confirm',
     name: 'generateTestFiles',

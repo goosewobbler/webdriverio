@@ -20,11 +20,9 @@ import {
     getAnswers,
     npmInstall,
     runAppiumInstaller,
-    setupBabel,
-    setupTypeScript,
 } from '../../src/utils.js'
 import { BackendChoice, CompilerOptions } from '../../src/constants.js'
-import type { Questionnair } from '../../build/types'
+import type { Questionnair } from '../../build/types.js'
 
 const consoleLog = console.log.bind(console)
 beforeEach(() => {
@@ -59,8 +57,6 @@ vi.mock('../../src/utils.js', async () => {
         }),
         getProjectRoot: vi.fn().mockReturnValue('/foo/bar'),
         createPackageJSON: vi.fn(),
-        setupTypeScript: vi.fn(),
-        setupBabel: vi.fn(),
         npmInstall: vi.fn(),
         createWDIOConfig: vi.fn(),
         createWDIOScript: vi.fn(),
@@ -110,8 +106,6 @@ test.skipIf(isUsingWindows)('parseAnswers', async () => {
 test('runConfigCommand', async () => {
     await runConfigCommand({ projectRootDir: '/foo/bar' } as any, 'next')
     expect(createPackageJSON).toBeCalledTimes(1)
-    expect(setupTypeScript).toBeCalledTimes(1)
-    expect(setupBabel).toBeCalledTimes(1)
     expect(npmInstall).toBeCalledTimes(1)
     expect(createWDIOConfig).toBeCalledTimes(1)
     expect(createWDIOScript).toBeCalledTimes(1)
@@ -196,7 +190,6 @@ describe('Serenity/JS project generation', () => {
 
     const defaultAnswers: Questionnair = {
         runner: '@wdio/local-runner$--$local$--$e2e',
-        // @ts-expect-error
         framework: undefined,   // overridden in the tests
         backend: BackendChoice.Local,
         e2eEnvironment: 'web',
