@@ -8,8 +8,6 @@ import type { RequestPayload } from './handler/network.js'
 import type { GathererDriver } from './types.js'
 
 const CUSTOM_COMMANDS = [
-    'cdp',
-    'getNodeId',
     'getMetrics',
     'startTracing',
     'getDiagnostics',

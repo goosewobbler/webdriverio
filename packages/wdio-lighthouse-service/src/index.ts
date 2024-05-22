@@ -100,14 +100,6 @@ export default class LighthouseService implements Services.ServiceInstance {
         return Promise.all(this._command.map(async c => await c.checkPWA(auditsToBeRun)))
     }
 
-    _cdp (domain: string, command: string, args = {}) {
-        if (this._command.length === 1) {
-            return this._command[0].cdp(domain, command, args)
-        }
-
-        return Promise.all(this._command.map(async c => await c.cdp(domain, command, args)))
-    }
-
     async _setupHandler () {
         if (!this._browser) {
             return
@@ -167,7 +159,6 @@ export default class LighthouseService implements Services.ServiceInstance {
         this._browser.addCommand('enablePerformanceAudits', this._enablePerformanceAudits.bind(this))
         this._browser.addCommand('disablePerformanceAudits', this._disablePerformanceAudits.bind(this))
         this._browser.addCommand('checkPWA', this._checkPWA.bind(this))
-        this._browser.addCommand('cdp', this._cdp.bind(this))
     }
 }
 

@@ -203,58 +203,6 @@ const result = await browser.checkPWA()
 expect(result.passed).toBe(true)
 ```
 
-### Chrome DevTools Access
-
-For now the service allows two different ways to access the Chrome DevTools Protocol:
-
-### `cdp` Command
-
-The `cdp` command is a custom command added to the browser scope that allows you to call directly commands to the protocol.
-
-```js
-browser.cdp(<domain>, <command>, <arguments>)
-```
-
-For example if you want to get the JavaScript coverage of your page you can do the following:
-
-```js
-it('should take JS coverage', async () => {
-    /**
-     * enable necessary domains
-     */
-    await browser.cdp('Profiler', 'enable')
-    await browser.cdp('Debugger', 'enable')
-
-    /**
-     * start test coverage profiler
-     */
-    await browser.cdp('Profiler', 'startPreciseCoverage', {
-        callCount: true,
-        detailed: true
-    })
-
-    await browser.url('http://google.com')
-
-    /**
-     * capture test coverage
-     */
-    const { result } = await browser.cdp('Profiler', 'takePreciseCoverage')
-    const coverage = result.filter((res) => res.url !== '')
-    console.log(coverage)
-})
-```
-
-### `getNodeId(selector)` and `getNodeIds(selector)` Command
-
-Helper method to get the nodeId of an element in the page. NodeIds are similar like WebDriver node ids an identifier for a node. It can be used as a parameter for other Chrome DevTools methods, e.g. `DOM.focus`.
-
-```js
-const nodeId = await browser.getNodeId('body')
-console.log(nodeId) // outputs: 4
-const nodeId = await browser.getNodeIds('img')
-console.log(nodeId) // outputs: [ 40, 41, 42, 43, 44, 45 ]
-```
-
 ### `startTracing(categories, samplingFrequency)` Command
 
 Start tracing the browser. You can optionally pass in custom tracing categories (defaults to [this list](https://github.com/webdriverio/webdriverio/tree/main/packages/wdio-lighthouse-service/src/constants.js#L1-L9)) and the sampling frequency (defaults to `10000`).
@@ -310,17 +258,6 @@ console.log(await browser.getPageWeight())
 // }
 ```
 
-### Setting Download Paths for the Browser
-
-The `cdp` command can be used to call the [`Page.setDownloadBehavior`](https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-setDownloadBehavior) command of Devtools Protocol to set the behavior when downloading a file. Make sure the `downloadPath` is an absolute path and the `browser.cdp()` call is made before the file is downloaded.
-
-```js
-await browser.cdp('Page', 'setDownloadBehavior', {
-    behavior: 'allow',
-    downloadPath: '/home/root/webdriverio-project/',
-});
-```
-
 ### Access Puppeteer Instance
 
 The service uses Puppeteer for its automation under the hood. You can get access to the used instance by calling the [`getPuppeteer`](https://webdriver.io/docs/api/browser/getPuppeteer) command. __Note:__ Puppeteer commands are async and either needs to be called within the `call` command or handled via `async/await`:
@@ -334,29 +271,6 @@ describe('use Puppeteer', () => {
         const page = await browser.call(() => puppeteer.pages())[0]
         console.log(await browser.call(() => page.title()))
     })
-})
-```
-
-### Event Listener
-
-In order to capture network events in the browser you can register an event listener to the Chrome DevTools.
-A full list of available [CDP Network Events](https://chromedevtools.github.io/devtools-protocol/tot/Network/).
-
-```js
-it('should listen on network events', () => {
-    await browser.cdp('Network', 'enable')
-
-    await browser.on('Network.requestWillBeSent', (event) => {
-        console.log(`Request: ${event.request.method} ${event.request.url}`);
-    });
-    await browser.on('Network.responseReceived', (event) => {
-        console.log(`Response: ${event.response.status} ${event.response.url}`);
-    });
-    await browser.on('Network.loadingFailed', (event) => {
-        console.log(`Request failed: ${event.errorText}`);
-    });
-
-    await browser.url('https://www.google.com')
 })
 ```
 

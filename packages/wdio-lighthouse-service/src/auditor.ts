@@ -21,7 +21,6 @@ import type {
     AuditResult, LHAuditResult, ErrorAudit, PWAAudits
 } from './types.js'
 import type { Trace } from './gatherer/trace.js'
-import type { CDPSessionOnMessageObject } from './gatherer/devtools.js'
 
 const log = logger('@wdio/lighthouse-service:Auditor')
 
@@ -32,7 +31,6 @@ export default class Auditor {
 
     constructor (
         private _traceLogs?: Trace,
-        private _devtoolsLogs?: CDPSessionOnMessageObject[],
         private _formFactor?: FormFactor
     ) {
         if (_traceLogs) {
@@ -56,7 +54,6 @@ export default class Auditor {
         try {
             return AUDIT.audit({
                 traces: { defaultPass: this._traceLogs },
-                devtoolsLogs: { defaultPass: this._devtoolsLogs },
                 TestedAsMobileDevice: true,
                 GatherContext: { gatherMode: 'navigation' },
                 ...params

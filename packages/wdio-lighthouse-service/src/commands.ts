@@ -16,25 +16,12 @@ import type {
     GathererDriver,
     PWAAudits
 } from './types.js'
-import type { CDPSessionOnMessageObject } from './gatherer/devtools.js'
-import DevtoolsGatherer from './gatherer/devtools.js'
 import Auditor from './auditor.js'
 import PWAGatherer from './gatherer/pwa.js'
 import TraceGatherer from './gatherer/trace.js'
 
 const log = logger('@wdio/lighthouse-service:CommandHandler')
 const TRACE_COMMANDS = ['click', 'navigateTo', 'url']
-
-function isCDPSessionOnMessageObject(
-    data: any
-): data is CDPSessionOnMessageObject {
-    return (
-        data !== null &&
-        typeof data === 'object' &&
-        Object.prototype.hasOwnProperty.call(data, 'params') &&
-        Object.prototype.hasOwnProperty.call(data, 'method')
-    )
-}
 
 export default class CommandHandler {
     private _isTracing = false
@@ -49,7 +36,6 @@ export default class CommandHandler {
     private _formFactor?: FormFactor
 
     private _traceGatherer?: TraceGatherer
-    private _devtoolsGatherer?: DevtoolsGatherer
     private _pwaGatherer?: PWAGatherer
 
     constructor (
@@ -76,46 +62,6 @@ export default class CommandHandler {
             fnName,
             this[fnName as keyof CommandHandler].bind(this)
         ))
-
-        this._devtoolsGatherer = new DevtoolsGatherer()
-        _session.on('*', this._propagateWSEvents.bind(this))
-    }
-
-    /**
-     * The cdp command is a custom command added to the browser scope that allows you
-     * to call directly commands to the protocol.
-     */
-    cdp (domain: string, command: string, args = {}) {
-        log.info(`Send command "${domain}.${command}" with args: ${JSON.stringify(args)}`)
-        return this._session.send(`${domain}.${command}` as any, args)
-    }
-
-    /**
-     * Helper method to get the nodeId of an element in the page.
-     * NodeIds are similar like WebDriver node ids an identifier for a node.
-     * It can be used as a parameter for other Chrome DevTools methods, e.g. DOM.focus.
-     */
-    async getNodeId (selector: string) {
-        const document = await this._session.send('DOM.getDocument')
-        const { nodeId } = await this._session.send(
-            'DOM.querySelector',
-            { nodeId: document.root.nodeId, selector }
-        )
-        return nodeId
-    }
-
-    /**
-     * Helper method to get the nodeId of an element in the page.
-     * NodeIds are similar like WebDriver node ids an identifier for a node.
-     * It can be used as a parameter for other Chrome DevTools methods, e.g. DOM.focus.
-     */
-    async getNodeIds (selector: string) {
-        const document = await this._session.send('DOM.getDocument')
-        const { nodeIds } = await this._session.send(
-            'DOM.querySelectorAll',
-            { nodeId: document.root.nodeId, selector }
-        )
-        return nodeIds
     }
 
     /**
@@ -227,24 +173,6 @@ export default class CommandHandler {
         return auditor._auditPWA(artifacts, auditsToBeRun)
     }
 
-    private _propagateWSEvents (data: any) {
-        if (!isCDPSessionOnMessageObject(data)) {
-            return
-        }
-
-        this._devtoolsGatherer?.onMessage(data)
-        const method = data.method || 'event'
-        try {
-            // can fail due to "Cannot convert a Symbol value to a string"
-            log.debug(`cdp event: ${method} with params ${JSON.stringify(data.params)}`)
-        } catch {
-            // ignore
-        }
-        if (this._browser) {
-            this._browser.emit(method, data.params)
-        }
-    }
-
     async _initCommand () {
         /**
          * enable domains for client
@@ -282,7 +210,7 @@ export default class CommandHandler {
          * update custom commands once tracing finishes
          */
         this._traceGatherer.once('tracingComplete', (traceEvents) => {
-            const auditor = new Auditor(traceEvents, this._devtoolsGatherer?.getLogs(), this._formFactor)
+            const auditor = new Auditor(traceEvents, this._formFactor)
             auditor.updateCommands(this._browser as WebdriverIO.Browser)
         })
 

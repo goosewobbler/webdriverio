@@ -99,52 +99,6 @@ test('getTraceLogs', () => {
     expect(commander.getTraceLogs()).toEqual([{ foo: 'bar' }])
 })
 
-test('cdp', async () => {
-    sessionMock.send.mockReturnValue(Promise.resolve('foobar'))
-    const handler = new CommandHandler(
-        sessionMock as any,
-        pageMock as any,
-        driverMock as any,
-        browser as any
-    )
-    expect(await handler.cdp('Network', 'enable')).toBe('foobar')
-    expect(sessionMock.send).toBeCalledWith('Network.enable', {})
-})
-
-test('getNodeId', async () => {
-    sessionMock.send.mockResolvedValueOnce({ root: { nodeId: 123 } })
-    sessionMock.send.mockResolvedValueOnce({ nodeId: 42 })
-    const handler = new CommandHandler(
-        sessionMock as any,
-        pageMock as any,
-        driverMock as any,
-        browser as any
-    )
-
-    expect(await handler.getNodeId('selector')).toBe(42)
-    expect(sessionMock.send).toBeCalledWith('DOM.getDocument')
-    expect(sessionMock.send).toBeCalledWith(
-        'DOM.querySelector',
-        { nodeId: 123, selector: 'selector' })
-})
-
-test('getNodeIds', async () => {
-    sessionMock.send.mockResolvedValueOnce({ root: { nodeId: 123 } })
-    sessionMock.send.mockResolvedValueOnce({ nodeIds: [42, 43] })
-    const handler = new CommandHandler(
-        sessionMock as any,
-        pageMock as any,
-        driverMock as any,
-        browser as any
-    )
-
-    expect(await handler.getNodeIds('selector')).toEqual([42, 43])
-    expect(sessionMock.send).toBeCalledWith('DOM.getDocument')
-    expect(sessionMock.send).toBeCalledWith(
-        'DOM.querySelectorAll',
-        { nodeId: 123, selector: 'selector' })
-})
-
 test('startTracing', () => {
     const handler = new CommandHandler(
         sessionMock as any,
