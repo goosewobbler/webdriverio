@@ -10,7 +10,7 @@ import type {
     DeviceDescription, PWAAudits, DeviceOptions
 } from './types.js'
 
-export default class DevToolsService implements Services.ServiceInstance {
+export default class LighthouseService implements Services.ServiceInstance {
     private _command: CommandHandler[] = []
 
     private _browser?: WebdriverIO.Browser | WebdriverIO.MultiRemoteBrowser
