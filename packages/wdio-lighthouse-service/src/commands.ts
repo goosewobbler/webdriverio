@@ -11,14 +11,12 @@ import NetworkHandler from './handler/network.js'
 import { CLICK_TRANSITION, DEFAULT_THROTTLE_STATE, DEFAULT_TRACING_CATEGORIES, NETWORK_STATES } from './constants.js'
 import { sumByKey } from './utils.js'
 import type {
-    Device,
-    DeviceDescription, DevtoolsConfig,
+    DevtoolsConfig,
     EnablePerformanceAuditsOptions,
     FormFactor,
     GathererDriver,
     PWAAudits
 } from './types.js'
-import { KnownDevices } from 'puppeteer-core'
 import type { CDPSessionOnMessageObject } from './gatherer/devtools.js'
 import DevtoolsGatherer from './gatherer/devtools.js'
 import Auditor from './auditor.js'
@@ -210,30 +208,6 @@ export default class CommandHandler {
      */
     disablePerformanceAudits () {
         this._shouldRunPerformanceAudits = false
-    }
-
-    /**
-     * set device emulation
-     */
-    async emulateDevice (device: string | DeviceDescription, inLandscape?: boolean) {
-        if (!this._page) {
-            throw new Error('No page has been captured yet')
-        }
-
-        if (typeof device === 'string') {
-            const deviceName = device + (inLandscape ? ' landscape' : '') as keyof typeof KnownDevices
-            const deviceCapabilities = KnownDevices[deviceName]
-            if (!deviceCapabilities) {
-                const deviceNames = Object.values(KnownDevices)
-                    .map((device: Device) => device.name)
-                    .filter((device: string) => !device.endsWith('landscape'))
-                throw new Error(`Unknown device, available options: ${deviceNames.join(', ')}`)
-            }
-
-            return this._page.emulate(deviceCapabilities)
-        }
-
-        return this._page.emulate(device)
     }
 
     /**

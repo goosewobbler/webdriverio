@@ -7,7 +7,7 @@ import { setUnsupportedCommand, getLighthouseDriver } from './utils.js'
 import { DEFAULT_THROTTLE_STATE, NETWORK_STATES } from './constants.js'
 import type {
     DevtoolsConfig, EnablePerformanceAuditsOptions,
-    DeviceDescription, PWAAudits
+    PWAAudits
 } from './types.js'
 
 export default class DevToolsService implements Services.ServiceInstance {
@@ -84,17 +84,6 @@ export default class DevToolsService implements Services.ServiceInstance {
                 c.disablePerformanceAudits()
             }
         }
-    }
-
-    /**
-     * set device emulation
-     */
-    async _emulateDevice (device: string | DeviceDescription, inLandscape?: boolean) {
-        if (this._command.length === 1) {
-            return await this._command[0].emulateDevice(device, inLandscape)
-        }
-
-        return Promise.all(this._command.map(async c => await c.emulateDevice(device, inLandscape)))
     }
 
     async _setThrottlingProfile(
@@ -192,7 +181,6 @@ export default class DevToolsService implements Services.ServiceInstance {
 
         this._browser.addCommand('enablePerformanceAudits', this._enablePerformanceAudits.bind(this))
         this._browser.addCommand('disablePerformanceAudits', this._disablePerformanceAudits.bind(this))
-        this._browser.addCommand('emulateDevice', this._emulateDevice.bind(this))
         this._browser.addCommand('checkPWA', this._checkPWA.bind(this))
         this._browser.addCommand('getCoverageReport', this._getCoverageReport.bind(this))
         this._browser.addCommand('cdp', this._cdp.bind(this))
