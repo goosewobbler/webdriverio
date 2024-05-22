@@ -30,20 +30,6 @@ vi.mock('../src/auditor', () => {
     }
 })
 
-vi.mock('../src/gatherer/coverage', () => {
-    const instances: any[] = []
-    return {
-        default: class {
-            getCoverageReport = vi.fn()
-            init = vi.fn()
-
-            constructor () {
-                instances.push(this)
-            }
-        }
-    }
-})
-
 const pageMock = {
     setCacheEnabled: vi.fn(),
     emulate: vi.fn(),
@@ -61,8 +47,6 @@ const sessionMock = {
 }
 
 const driverMock = {}
-
-const options = {}
 
 const browser: any = {
     addCommand: vi.fn(),
@@ -84,11 +68,6 @@ test('initialization', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        {
-            coverageReporter: {
-                enable: true
-            }
-        },
         browser as any
     )
     await handler._initCommand()
@@ -107,7 +86,6 @@ test('initialization', async () => {
     expect(handler['_devtoolsGatherer']?.onMessage).toBeCalledWith({ method:'foo', params: 'bar' })
     expect((handler['_browser'] as any).emit).toBeCalledTimes(1)
     expect((handler['_browser'] as any).emit).toBeCalledWith('foo', 'bar')
-    expect(handler['_coverageGatherer']!.init).toBeCalledTimes(1)
 })
 
 test('getTraceLogs', () => {
@@ -115,7 +93,6 @@ test('getTraceLogs', () => {
         sessionMock as unknown as CDPSession,
         pageMock as unknown as Page,
         driverMock as any,
-        options as any,
         browser
     )
     commander['_traceEvents'] = [{ foo: 'bar' }] as any
@@ -128,7 +105,6 @@ test('cdp', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     expect(await handler.cdp('Network', 'enable')).toBe('foobar')
@@ -142,7 +118,6 @@ test('getNodeId', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
 
@@ -160,7 +135,6 @@ test('getNodeIds', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
 
@@ -176,7 +150,6 @@ test('startTracing', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler.startTracing()
@@ -192,7 +165,6 @@ test('endTracing', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_isTracing'] = true
@@ -208,7 +180,6 @@ test('endTracing throws if not tracing', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     const err = await handler.endTracing().catch((err) => err)
@@ -221,7 +192,6 @@ test('endTracing throws if parsing of trace events fails', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_isTracing'] = true
@@ -234,7 +204,6 @@ test('getPageWeight', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_networkHandler'].requestTypes = {
@@ -255,7 +224,6 @@ test('beforeCmd', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_traceGatherer'] = { startTracing: vi.fn() } as any
@@ -298,7 +266,6 @@ test('afterCmd', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_traceGatherer'] = { once: vi.fn() } as any
@@ -331,7 +298,6 @@ test('afterCmd: should create a new auditor instance and should update the brows
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_traceGatherer'] = new EventEmitter() as any
@@ -352,7 +318,6 @@ test('afterCmd: should update browser commands even if failed', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_traceGatherer'] = new EventEmitter() as any
@@ -373,7 +338,6 @@ test('afterCmd: should continue with command after tracingFinished was emitted',
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler['_traceGatherer'] = new EventEmitter() as any
@@ -395,7 +359,6 @@ test('enablePerformanceAudits: applies some default values', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler.enablePerformanceAudits()
@@ -411,7 +374,6 @@ test('enablePerformanceAudits: applies some custom values', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler.enablePerformanceAudits({
@@ -432,7 +394,6 @@ test('disablePerformanceAudits', () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
     handler.enablePerformanceAudits({
@@ -450,7 +411,6 @@ test('setThrottlingProfile', async () => {
         sessionMock as any,
         pageMock as any,
         driverMock as any,
-        options as any,
         browser as any
     )
 
@@ -475,28 +435,4 @@ test('setThrottlingProfile', async () => {
         offline: false,
         uploadThroughput: -1
     })
-})
-
-test('emulateDevice', async () => {
-    const handler = new CommandHandler(
-        sessionMock as any,
-        pageMock as any,
-        driverMock as any,
-        options as any,
-        browser as any
-    )
-
-    handler['_page'] = pageMock as any
-    handler['_session'] = sessionMock as any
-    await handler.emulateDevice('Nexus 6P')
-
-    expect(pageMock.emulate.mock.calls).toMatchSnapshot()
-    pageMock.emulate.mockClear()
-    await handler.emulateDevice({ foo: 'bar' } as any)
-    expect(pageMock.emulate.mock.calls).toEqual([[{ foo: 'bar' }]])
-
-    const isSuccessful = await handler.emulateDevice('not existing').then(
-        () => true,
-        () => false)
-    expect(isSuccessful).toBe(false)
 })

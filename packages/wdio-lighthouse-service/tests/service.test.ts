@@ -21,10 +21,7 @@ vi.mock('../src/commands', () => {
         enablePerformanceAudits = vi.fn()
         disablePerformanceAudits = vi.fn()
         setThrottlingProfile = vi.fn()
-        emulateDevice = vi.fn()
         checkPWA = vi.fn()
-        getCoverageReport = vi.fn()
-        _logCoverage = vi.fn()
     }
 
     return { default: CommandHandlerMock }
@@ -108,11 +105,7 @@ test('if not supported by browser', async () => {
 })
 
 test('if supported by browser', async () => {
-    const service = new LighthouseService({
-        coverageReporter: {
-            enable: true
-        }
-    })
+    const service = new LighthouseService()
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -120,8 +113,6 @@ test('if supported by browser', async () => {
         'enablePerformanceAudits', expect.any(Function))
     expect(service['_browser']?.addCommand).toBeCalledWith(
         'disablePerformanceAudits', expect.any(Function))
-    expect(service['_browser']?.addCommand).toBeCalledWith(
-        'emulateDevice', expect.any(Function))
     expect(service['_browser']?.addCommand).toBeCalledWith(
         'checkPWA', expect.any(Function))
 })
@@ -237,25 +228,6 @@ test('_setThrottlingProfile for multiremote', async () => {
     expect(service['_command'][1].setThrottlingProfile).toBeCalledTimes(1)
 })
 
-test('_emulateDevice', async () => {
-    const service = new LighthouseService({})
-    service['_browser'] = browser
-    await service._setupHandler()
-
-    await service._emulateDevice('Nexus 6P')
-    expect(service['_command'][0].emulateDevice).toBeCalledTimes(1)
-})
-
-test('_emulateDevice for multiremote', async () => {
-    const service = new LighthouseService({})
-    service['_browser'] = multiBrowser
-    await service._setupHandler()
-    await service._emulateDevice('Nexus 6P')
-
-    expect(service['_command'][0].emulateDevice).toBeCalledTimes(1)
-    expect(service['_command'][1].emulateDevice).toBeCalledTimes(1)
-})
-
 test('_checkPWA', async () => {
     const service = new LighthouseService({})
     service['_browser'] = browser
@@ -273,25 +245,6 @@ test('_checkPWA for multiremote', async () => {
 
     expect(service['_command'][0].checkPWA).toBeCalledTimes(1)
     expect(service['_command'][1].checkPWA).toBeCalledTimes(1)
-})
-
-test('_getCoverageReport', async () => {
-    const service = new LighthouseService({})
-    service['_browser'] = browser
-    await service._setupHandler()
-
-    await service._getCoverageReport()
-    expect(service['_command'][0].getCoverageReport).toBeCalledTimes(1)
-})
-
-test('_getCoverageReport for multiremote', async () => {
-    const service = new LighthouseService({})
-    service['_browser'] = multiBrowser
-    await service._setupHandler()
-    await service._getCoverageReport()
-
-    expect(service['_command'][0].getCoverageReport).toBeCalledTimes(1)
-    expect(service['_command'][1].getCoverageReport).toBeCalledTimes(1)
 })
 
 test('_cdp', async () => {
@@ -329,13 +282,4 @@ test('onReload hook', async () => {
     ;(service['_browser'] as any).puppeteer = 'suppose to be reset after reload' as any
     service.onReload()
     expect(service._setupHandler).toBeCalledTimes(1)
-})
-
-test('after hook', async () => {
-    const service = new LighthouseService({})
-    service['_browser'] = browser
-    await service._setupHandler()
-
-    await service.after()
-    expect(service['_command'][0]._logCoverage).toBeCalledTimes(1)
 })

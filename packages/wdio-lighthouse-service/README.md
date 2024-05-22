@@ -203,34 +203,6 @@ const result = await browser.checkPWA()
 expect(result.passed).toBe(true)
 ```
 
-### Capture Code Coverage
-
-The service offers you to capture the code coverage of your application under test. To do so you need to enable this feature as part of the service settings:
-
-```js
-// wdio.conf.js
-services: [
-    ['devtools', {
-        coverageReporter: {
-            enable: true,
-            type: 'html', // lcov, json, text
-            logDir: __dirname + '/coverage',
-            exclude: [/resources/]
-        }
-    }]
-]
-```
-
-Then you have access to a command that calculates the ratio of covered code lines and branches for you to assert within your test:
-
-```js
-const coverage = await browser.getCoverageReport()
-expect(coverage.lines.total).toBeAbove(0.9)
-expect(coverage.statements.total).toBeAbove(0.9)
-expect(coverage.functions.total).toBeAbove(0.9)
-expect(coverage.branches.total).toBeAbove(0.9)
-```
-
 ### Chrome DevTools Access
 
 For now the service allows two different ways to access the Chrome DevTools Protocol:

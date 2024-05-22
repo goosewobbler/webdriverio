@@ -11,7 +11,6 @@ import NetworkHandler from './handler/network.js'
 import { CLICK_TRANSITION, DEFAULT_THROTTLE_STATE, DEFAULT_TRACING_CATEGORIES, NETWORK_STATES } from './constants.js'
 import { sumByKey } from './utils.js'
 import type {
-    DevtoolsConfig,
     EnablePerformanceAuditsOptions,
     FormFactor,
     GathererDriver,
@@ -22,7 +21,6 @@ import DevtoolsGatherer from './gatherer/devtools.js'
 import Auditor from './auditor.js'
 import PWAGatherer from './gatherer/pwa.js'
 import TraceGatherer from './gatherer/trace.js'
-import CoverageGatherer from './gatherer/coverage.js'
 
 const log = logger('@wdio/lighthouse-service:CommandHandler')
 const TRACE_COMMANDS = ['click', 'navigateTo', 'url']
@@ -52,14 +50,12 @@ export default class CommandHandler {
 
     private _traceGatherer?: TraceGatherer
     private _devtoolsGatherer?: DevtoolsGatherer
-    private _coverageGatherer?: CoverageGatherer
     private _pwaGatherer?: PWAGatherer
 
     constructor (
         private _session: CDPSession,
         private _page: Page,
         private _driver: GathererDriver,
-        private _options: DevtoolsConfig,
         private _browser: WebdriverIO.Browser | WebdriverIO.MultiRemoteBrowser
     ) {
         this._networkHandler = new NetworkHandler(_session)
@@ -70,8 +66,6 @@ export default class CommandHandler {
         _session.on('Page.frameNavigated', this._traceGatherer.onFrameNavigated.bind(this._traceGatherer))
 
         _page.on('requestfailed', this._traceGatherer.onFrameLoadFail.bind(this._traceGatherer))
-
-        this._pwaGatherer = new PWAGatherer(_session, _page, _driver)
 
         /**
          * register browser commands
@@ -233,16 +227,6 @@ export default class CommandHandler {
         return auditor._auditPWA(artifacts, auditsToBeRun)
     }
 
-    getCoverageReport () {
-        return this._coverageGatherer!.getCoverageReport()
-    }
-
-    async _logCoverage() {
-        if (this._coverageGatherer) {
-            await this._coverageGatherer.logCoverage()
-        }
-    }
-
     private _propagateWSEvents (data: any) {
         if (!isCDPSessionOnMessageObject(data)) {
             return
@@ -262,15 +246,6 @@ export default class CommandHandler {
     }
 
     async _initCommand () {
-        /**
-         * register coverage gatherer if options is set by user
-         */
-        if (this._options.coverageReporter?.enable) {
-            this._coverageGatherer = new CoverageGatherer(this._page, this._options.coverageReporter)
-            this._browser.addCommand('getCoverageReport', this.getCoverageReport.bind(this))
-            await this._coverageGatherer.init()
-        }
-
         /**
          * enable domains for client
          */

@@ -6,16 +6,15 @@ import type Auditor from './auditor.js'
 import { setUnsupportedCommand, getLighthouseDriver } from './utils.js'
 import { DEFAULT_THROTTLE_STATE, NETWORK_STATES } from './constants.js'
 import type {
-    DevtoolsConfig, EnablePerformanceAuditsOptions,
+    EnablePerformanceAuditsOptions,
     PWAAudits
 } from './types.js'
 
 export default class LighthouseService implements Services.ServiceInstance {
     private _command: CommandHandler[] = []
-
     private _browser?: WebdriverIO.Browser | WebdriverIO.MultiRemoteBrowser
 
-    constructor (private _options: DevtoolsConfig) {}
+    constructor () {}
 
     async before (
         caps: Capabilities.RemoteCapability,
@@ -44,12 +43,6 @@ export default class LighthouseService implements Services.ServiceInstance {
         }
 
         return Promise.all(this._command.map(async c => await c._afterCmd(commandName)))
-    }
-
-    async after () {
-        for (const c of this._command) {
-            await c._logCoverage()
-        }
     }
 
     /**
@@ -105,14 +98,6 @@ export default class LighthouseService implements Services.ServiceInstance {
             return await this._command[0].checkPWA(auditsToBeRun)
         }
         return Promise.all(this._command.map(async c => await c.checkPWA(auditsToBeRun)))
-    }
-
-    async _getCoverageReport () {
-        if (this._command.length === 1) {
-            return this._command[0].getCoverageReport()
-        }
-
-        return await Promise.all(this._command.map(c => c.getCoverageReport()))
     }
 
     _cdp (domain: string, command: string, args = {}) {
@@ -174,7 +159,7 @@ export default class LighthouseService implements Services.ServiceInstance {
             const session = await target.createCDPSession()
             const driver = await getLighthouseDriver(session, target)
 
-            const cmd = new CommandHandler(session, page, driver, this._options, browser)
+            const cmd = new CommandHandler(session, page, driver, browser)
             await cmd._initCommand()
             this._command.push(cmd)
         }
@@ -182,7 +167,6 @@ export default class LighthouseService implements Services.ServiceInstance {
         this._browser.addCommand('enablePerformanceAudits', this._enablePerformanceAudits.bind(this))
         this._browser.addCommand('disablePerformanceAudits', this._disablePerformanceAudits.bind(this))
         this._browser.addCommand('checkPWA', this._checkPWA.bind(this))
-        this._browser.addCommand('getCoverageReport', this._getCoverageReport.bind(this))
         this._browser.addCommand('cdp', this._cdp.bind(this))
     }
 }
@@ -203,10 +187,6 @@ export type BrowserExtensionSync = {
 }
 
 declare global {
-    namespace WebdriverIO {
-        interface ServiceOption extends DevtoolsConfig {}
-    }
-
     namespace WebdriverIO {
         interface Browser extends BrowserExtension { }
         interface MultiRemoteBrowser extends BrowserExtension { }

@@ -13,11 +13,9 @@ const CUSTOM_COMMANDS = [
     'getMetrics',
     'startTracing',
     'getDiagnostics',
-    'getCoverageReport',
     'enablePerformanceAudits',
     'disablePerformanceAudits',
     'getMainThreadWorkBreakdown',
-    'emulateDevice',
     'checkPWA'
 ]
 

@@ -1,38 +1,6 @@
 import type { TraceStreamJson } from '@tracerbench/trace-event'
-import type { ReportOptions } from 'istanbul-reports'
-import type { Totals, CoverageSummaryData } from 'istanbul-lib-coverage'
 import type { Viewport } from 'puppeteer-core/lib/esm/puppeteer/common/PuppeteerViewport.js'
 import type { NETWORK_STATES, PWA_AUDITS } from './constants.js'
-
-export interface DevtoolsConfig {
-    coverageReporter?: CoverageReporterOptions
-}
-
-export interface CoverageReporterOptions {
-    /**
-     * whether or not to enable code coverage reporting
-     * @default false
-     */
-    enable?: boolean
-    /**
-     * Directory where JS coverage reports are stored
-     */
-    logDir?: string
-    /**
-     * format of report
-     * @default json
-     */
-    type?: keyof ReportOptions
-    /**
-     * Options for coverage report
-     */
-    options?: any
-    /**
-     * Exclude code coverage files
-     * @default []
-     */
-    exclude?: (RegExp | string)[]
-}
 
 export type FormFactor = 'mobile' | 'desktop' | 'none'
 
@@ -148,14 +116,6 @@ export interface ErrorAudit {
 
 export type PWAAudits = keyof typeof PWA_AUDITS
 export type NetworkStates = 'offline' | 'GPRS' | 'Regular 2G' | 'Good 2G' | 'Regular 3G' | 'Good 3G' | 'Regular 4G' | 'DSL' | 'Wifi' | 'online';
-
-export interface Coverage {
-    lines: Totals
-    statements: Totals
-    functions: Totals
-    branches: Totals
-    files: Record<string, CoverageSummaryData>
-}
 
 export interface CustomDevice {
     viewport: Viewport,
