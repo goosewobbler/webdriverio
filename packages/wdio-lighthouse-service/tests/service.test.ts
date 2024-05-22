@@ -2,7 +2,7 @@ import path from 'node:path'
 import { expect, test, vi, beforeEach } from 'vitest'
 import puppeteer from 'puppeteer-core'
 
-import DevToolsService from '../src/index.js'
+import LighthouseService from '../src/index.js'
 import { setUnsupportedCommand } from '../src/utils.js'
 
 import logger from '@wdio/logger'
@@ -95,7 +95,7 @@ beforeEach(() => {
 })
 
 test('if not supported by browser', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = {
         sessionId: vi.fn(),
         addCommand: vi.fn(),
@@ -108,7 +108,7 @@ test('if not supported by browser', async () => {
 })
 
 test('if supported by browser', async () => {
-    const service = new DevToolsService({
+    const service = new LighthouseService({
         coverageReporter: {
             enable: true
         }
@@ -127,7 +127,7 @@ test('if supported by browser', async () => {
 })
 
 test('beforeCommand', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -137,7 +137,7 @@ test('beforeCommand', async () => {
 })
 
 test('afterCommand', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -147,7 +147,7 @@ test('afterCommand', async () => {
 })
 
 test('afterCommand: switchToWindow', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -158,7 +158,7 @@ test('afterCommand: switchToWindow', async () => {
 })
 
 test('_enablePerformanceAudits: throws if network or cpu properties have wrong types', () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     expect(
         () => service._enablePerformanceAudits({ networkThrottling: 'super fast 3g' } as any)
@@ -169,7 +169,7 @@ test('_enablePerformanceAudits: throws if network or cpu properties have wrong t
 })
 
 test('_enablePerformanceAudits', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
     service._enablePerformanceAudits()
@@ -178,7 +178,7 @@ test('_enablePerformanceAudits', async () => {
 })
 
 test('_enablePerformanceAudits for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     service._enablePerformanceAudits()
@@ -189,7 +189,7 @@ test('_enablePerformanceAudits for multiremote', async () => {
 })
 
 test('_disablePerformanceAudits', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
     service._enablePerformanceAudits({
@@ -203,7 +203,7 @@ test('_disablePerformanceAudits', async () => {
 })
 
 test('_disablePerformanceAudits for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     service._enablePerformanceAudits({
@@ -219,7 +219,7 @@ test('_disablePerformanceAudits for multiremote', async () => {
 })
 
 test('_setThrottlingProfile', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -228,7 +228,7 @@ test('_setThrottlingProfile', async () => {
 })
 
 test('_setThrottlingProfile for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     await service._setThrottlingProfile('Good 3G', 4, true)
@@ -238,7 +238,7 @@ test('_setThrottlingProfile for multiremote', async () => {
 })
 
 test('_emulateDevice', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -247,7 +247,7 @@ test('_emulateDevice', async () => {
 })
 
 test('_emulateDevice for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     await service._emulateDevice('Nexus 6P')
@@ -257,7 +257,7 @@ test('_emulateDevice for multiremote', async () => {
 })
 
 test('_checkPWA', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -266,7 +266,7 @@ test('_checkPWA', async () => {
 })
 
 test('_checkPWA for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     await service._checkPWA()
@@ -276,7 +276,7 @@ test('_checkPWA for multiremote', async () => {
 })
 
 test('_getCoverageReport', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -285,7 +285,7 @@ test('_getCoverageReport', async () => {
 })
 
 test('_getCoverageReport for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
     await service._getCoverageReport()
@@ -295,7 +295,7 @@ test('_getCoverageReport for multiremote', async () => {
 })
 
 test('_cdp', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
@@ -305,7 +305,7 @@ test('_cdp', async () => {
 })
 
 test('_cdp for multiremote', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = multiBrowser
     await service._setupHandler()
 
@@ -316,14 +316,14 @@ test('_cdp for multiremote', async () => {
 })
 
 test('before hook', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service._setupHandler = vi.fn()
     service.before({}, [], browser)
     expect(service._setupHandler).toBeCalledTimes(1)
 })
 
 test('onReload hook', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     service._setupHandler = vi.fn()
     ;(service['_browser'] as any).puppeteer = 'suppose to be reset after reload' as any
@@ -332,7 +332,7 @@ test('onReload hook', async () => {
 })
 
 test('after hook', async () => {
-    const service = new DevToolsService({})
+    const service = new LighthouseService({})
     service['_browser'] = browser
     await service._setupHandler()
 
