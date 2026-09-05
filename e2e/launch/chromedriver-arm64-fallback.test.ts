@@ -33,13 +33,9 @@ function detectSystemChromeMajor(): number | undefined {
 }
 
 /**
- * Integration tests for Linux ARM64 Chromedriver download
- *
- * These tests verify that:
- * 1. Chromedriver downloads successfully on Linux ARM64 (Chrome for Testing first, with the
- *    Electron release as an automatic fallback)
- * 2. The downloaded chromedriver works correctly
- * 3. Version resolution works with and without explicit capabilities
+ * Integration tests for Linux ARM64 Chromedriver download: Chrome for Testing first with the
+ * Electron release as an automatic fallback, exercised with and without explicit capabilities
+ * against a real browser session.
  */
 describe('Chromedriver Linux ARM64 download', () => {
     let browser: Browser
@@ -167,8 +163,7 @@ describe('Chromedriver Linux ARM64 download', () => {
                 logLevel: 'info',
                 capabilities: {
                     browserName: 'chrome',
-                    // No browserVersion, no Electron version
-                    // Should auto-resolve to stable and map to Electron
+                    // No version pinned — setup should auto-resolve stable and map it to an Electron release
                     'goog:chromeOptions': {
                         args: ['--headless', '--no-sandbox', '--disable-gpu']
                     }
@@ -198,7 +193,6 @@ describe('Chromedriver Linux ARM64 download', () => {
                 }
             }
 
-            // Should fail with a clear error message
             await expect(
                 remote(options)
             ).rejects.toThrow()

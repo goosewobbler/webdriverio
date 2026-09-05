@@ -132,7 +132,6 @@ export const downloadProgressCallback = (artifact: string, downloadedBytes: numb
 
 /**
  * Installs a package using the provided installation options and clears the progress log afterward.
- * Returns the InstalledBrowser object which includes the executable path (important for custom providers).
  *
  * @description
  * When installing a package, progress updates are logged using `log.progress`.
@@ -297,8 +296,7 @@ export function getMajorVersionFromString(fullVersion:string) {
 }
 
 /**
- * Extract Electron-related capabilities from WebdriverIO capabilities object.
- * Handles both direct and W3C capabilities formats.
+ * Reads the Electron capabilities from both flat and W3C (alwaysMatch) capability shapes.
  */
 function parseElectronCapabilities(capabilities?: WebdriverIO.Capabilities) {
     if (!capabilities) {
@@ -323,9 +321,6 @@ function parseElectronCapabilities(capabilities?: WebdriverIO.Capabilities) {
     }
 }
 
-/**
- * Determine the appropriate platform, with ARM overrides.
- */
 function resolveChromedriverPlatform(): { platform: BrowserPlatform; isWindowsArm64: boolean } {
     const platform = detectBrowserPlatform()
     const actualPlatform = (platform === BrowserPlatform.LINUX && process.arch === 'arm64') ? BrowserPlatform.LINUX_ARM : platform
@@ -338,7 +333,7 @@ function resolveChromedriverPlatform(): { platform: BrowserPlatform; isWindowsAr
         throw new Error('The current platform is not supported.')
     }
 
-    // Windows ARM64 detection - detectBrowserPlatform() returns WIN64 for both x64 and ARM64
+    // detectBrowserPlatform() reports WIN64 for both x64 and ARM64, so arch disambiguates
     const isWindowsArm64 = process.platform === 'win32' && process.arch === 'arm64'
 
     return { platform: actualPlatform, isWindowsArm64 }
@@ -350,8 +345,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
 
     // Chrome for Testing now ships linux-arm64 Chromedriver, so Linux ARM64 takes the standard
     // CfT path below, with the Electron release as a fallback (`electronFallbackAvailable`).
-    // Windows ARM64 has no CfT binary at all (detectBrowserPlatform() reports it as WIN64), so
-    // it uses the Electron provider outright.
+    // Windows ARM64 has no CfT binary at all, so it uses the Electron provider outright.
     const needsAlternativeProvider = isWindowsArm64
     const electronFallbackAvailable = platform === BrowserPlatform.LINUX_ARM
 
@@ -361,16 +355,10 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
     if (electronVersion) {
         providers = [new ElectronChromedriverProvider()]
         buildId = electronVersion
-        // Only mention the Chromium version when it was actually provided, otherwise
-        // the message reads "(Chromium undefined)" for the electronVersion-only path.
         log.info(`Using Electron provider with Electron v${buildId}${chromiumVersion ? ` (Chromium ${chromiumVersion})` : ''}`)
     } else if (chromiumVersion || needsAlternativeProvider) {
-        // Use the Electron provider for an explicit Chromium version, or for Windows ARM64
-        // (which Chrome for Testing has no binary for at all).
         providers = [new ElectronChromedriverProvider()]
 
-        // For fallback scenario, we need to resolve "stable" to an actual version
-        // that the Electron provider can map to an Electron release
         let detectedVersion = chromiumVersion || driverVersion || getBuildIdByChromePath(await locateChromeSafely())
 
         if (!detectedVersion && needsAlternativeProvider) {
@@ -391,13 +379,12 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
             log.info(`Using Electron provider with Chromium v${buildId}`)
         }
     } else {
-        // Use standard Chrome chromedriver logic (no Electron provider)
         const version = driverVersion || getBuildIdByChromePath(await locateChromeSafely()) || ChromeReleaseChannel.STABLE
-        // These Chrome-for-Testing lookups run *before* the install() error boundary below, so
-        // on Linux ARM64 a rejection here (a CfT outage, or a Chromium milestone CfT never served
-        // for arm64) would terminate setup without ever reaching the advertised Electron-release
-        // fallback. Catch it and route to the Electron provider, matching the install-time
-        // fallback further down. On CfT-served platforms the failure is genuine, so rethrow.
+        // These Chrome-for-Testing lookups run before the install() error boundary below, so on
+        // Linux ARM64 a rejection here would terminate setup without ever reaching the advertised
+        // Electron-release fallback. Catch it and route to the Electron provider, as the
+        // install-time fallback further down does. On CfT-served platforms the failure is genuine,
+        // so rethrow.
         let resolvedBuildId: string | undefined
         try {
             resolvedBuildId = await resolveBuildId(Browser.CHROMEDRIVER, platform, version)
@@ -405,7 +392,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
             // newest known-good build for the same Chrome major.
             const canDownloadExact = await canDownload({ cacheDir, buildId: resolvedBuildId, platform, browser: Browser.CHROMEDRIVER, unpack: true })
             if (!canDownloadExact) {
-                // Derive the major from the *resolved* buildId, not `version`: when no Chrome is
+                // Derive the major from the resolved buildId, not `version`: when no Chrome is
                 // detected `version` is the 'stable' channel string, whose major is empty — which
                 // would make resolveBuildId throw and skip the Linux-ARM64 Electron fallback below.
                 const major = getMajorVersionFromString(resolvedBuildId)
@@ -426,10 +413,9 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
                 throw error
             }
             log.warn(`Chrome for Testing couldn't resolve Chromedriver for ${platform}: ${error instanceof Error ? error.message : String(error)}. Falling back to Electron releases...`)
-            // The Electron provider maps a concrete Chromium version → Electron release, so it
-            // needs a real version, not the 'stable' channel string. Prefer the build we resolved
-            // before failing, then the detected/requested version, then stable resolved via
-            // BrowserPlatform.LINUX (always served by CfT) purely to obtain a version to map.
+            // The Electron provider maps a concrete Chromium version, so hand it a real version,
+            // not the 'stable' channel string. BrowserPlatform.LINUX is always served by CfT, so
+            // resolving stable against it is a safe last resort when nothing better is known.
             buildId = resolvedBuildId
                 ?? (version !== ChromeReleaseChannel.STABLE
                     ? version
@@ -452,8 +438,6 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
 
     try {
         installedBrowser = await _install(installOptions)
-        // "ready" rather than "downloaded": install() resolves from cache without
-        // a download when the build is already present.
         log.info(`Chromedriver v${buildId} is ready`)
     } catch (error) {
         // If the primary (Electron) download for an explicit Chromium version failed, retry
@@ -493,7 +477,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
         }
     }
 
-    // Already reflects a custom provider's path when one implements getExecutablePath()
+    // installedBrowser.executablePath already reflects a custom provider's getExecutablePath()
     const executablePath = installedBrowser.executablePath
 
     if (providers?.length) {

@@ -101,8 +101,7 @@ function fetchChromiumToElectronMapping(): Promise<Record<string, string>> {
         return mapping
     })()
 
-    // Cache the in-flight promise so concurrent callers share one request, but
-    // evict it on failure so a later call can retry instead of caching the error.
+    // Evict the cached promise on failure so a later call can retry instead of caching the error.
     chromiumToElectronCache = pending
     pending.catch((error) => {
         log.debug('Failed to fetch Electron releases:', error)
