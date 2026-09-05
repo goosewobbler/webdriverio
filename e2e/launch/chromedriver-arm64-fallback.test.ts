@@ -8,17 +8,22 @@ import type { Browser } from 'webdriverio'
 // Chrome differs (or can't be detected), so newer-Chrome CI runners don't fail spuriously.
 const ELECTRON_33_CHROMIUM_MAJOR = 130
 
-function detectSystemChromeMajor(): number | undefined {
-    const candidates = process.env.CHROME_BINARY
-        ? [process.env.CHROME_BINARY]
-        : process.platform === 'darwin'
-            ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'google-chrome-stable', 'google-chrome']
-            : process.platform === 'win32'
-                // Windows Chrome doesn't print its version to stdout; leave empty so the guard skips.
-                ? []
-                : ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium']
+function chromeBinaryCandidates(): string[] {
+    if (process.env.CHROME_BINARY) {
+        return [process.env.CHROME_BINARY]
+    }
+    if (process.platform === 'darwin') {
+        return ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', 'google-chrome-stable', 'google-chrome']
+    }
+    // Windows Chrome doesn't print its version to stdout; leave empty so the guard skips.
+    if (process.platform === 'win32') {
+        return []
+    }
+    return ['google-chrome-stable', 'google-chrome', 'chromium-browser', 'chromium']
+}
 
-    for (const bin of candidates) {
+function detectSystemChromeMajor(): number | undefined {
+    for (const bin of chromeBinaryCandidates()) {
         try {
             const out = execFileSync(bin, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
             const major = /\b(\d+)\.\d+\.\d+/.exec(out)?.[1]

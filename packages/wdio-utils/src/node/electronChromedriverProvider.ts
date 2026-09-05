@@ -174,18 +174,9 @@ async function resolveElectronVersion(buildId: string, versionMapping?: Record<s
         log.debug('Falling back to electron-to-chromium package', (error as Error).message)
     }
 
+    // chromiumToElectron returns a string (major query), an array (full query, newest first), or undefined
     const electronVersion = chromiumToElectron(buildId)
-
-    // chromiumToElectron returns either:
-    // - a string (for major version queries)
-    // - an array of strings (for full version queries)
-    // - undefined (if no match)
-    if (Array.isArray(electronVersion)) {
-        // Return the first (latest) matching Electron version
-        return electronVersion[0] || null
-    }
-
-    return electronVersion || null
+    return (Array.isArray(electronVersion) ? electronVersion[0] : electronVersion) || null
 }
 
 /**

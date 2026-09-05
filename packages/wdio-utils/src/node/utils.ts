@@ -299,25 +299,12 @@ export function getMajorVersionFromString(fullVersion:string) {
  * Reads the Electron capabilities from both flat and W3C (alwaysMatch) capability shapes.
  */
 function parseElectronCapabilities(capabilities?: WebdriverIO.Capabilities) {
-    if (!capabilities) {
-        return { chromiumVersion: undefined, electronVersion: undefined }
-    }
-
-    type CapabilitiesWithCustomProps = Record<string, unknown> & {
-        alwaysMatch?: Record<string, unknown>;
-    }
-
-    const caps = capabilities as CapabilitiesWithCustomProps
-    const chromiumVersion = caps['wdio:chromiumVersion'] as string | undefined
-    const electronVersion = caps['wdio:electronVersion'] as string | undefined
-
-    const w3cCapabilities = caps.alwaysMatch || caps
-    const w3cChromiumVersion = w3cCapabilities['wdio:chromiumVersion'] as string | undefined
-    const w3cElectronVersion = w3cCapabilities['wdio:electronVersion'] as string | undefined
-
+    const caps = (capabilities ?? {}) as Record<string, unknown> & { alwaysMatch?: Record<string, unknown> }
+    const read = (key: string): string | undefined =>
+        (caps[key] as string | undefined) || (caps.alwaysMatch?.[key] as string | undefined)
     return {
-        chromiumVersion: chromiumVersion || w3cChromiumVersion,
-        electronVersion: electronVersion || w3cElectronVersion
+        chromiumVersion: read('wdio:chromiumVersion'),
+        electronVersion: read('wdio:electronVersion')
     }
 }
 
