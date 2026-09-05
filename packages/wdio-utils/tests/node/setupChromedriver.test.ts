@@ -115,6 +115,82 @@ describe('setupChromedriver', () => {
             expect(fallbackCall.providers).toHaveLength(1)
         })
 
+        it('falls back to the Electron release when Chrome for Testing build resolution rejects on Linux ARM64', async () => {
+            Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
+            mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)
+            // Chrome for Testing resolution itself rejects (a CfT outage, or a milestone CfT never
+            // served for arm64). This happens before the install() error boundary, so without the
+            // resolution-time fallback setup would terminate here instead of trying Electron.
+            mockResolveBuildId.mockRejectedValue(new Error('CfT unavailable'))
+
+            const result = await setupChromedriver('/cache', '130.0.6723.58', {
+                browserName: 'chrome'
+            })
+
+            expect(result).toEqual({ executablePath: '/path/to/chromedriver' })
+            // The requested version is reused directly as the buildId the Electron provider maps.
+            const installCall = mockInstall.mock.calls[0][0]
+            expect(installCall.buildId).toBe('130.0.6723.58')
+            expect(installCall.providers).toBeDefined()
+            expect(installCall.providers).toHaveLength(1)
+        })
+
+        it('falls back to the Electron release when the Chrome for Testing availability lookup rejects on Linux ARM64', async () => {
+            Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
+            mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)
+            mockResolveBuildId.mockResolvedValue('130.0.6723.58')
+            // canDownload() rejecting (e.g. a transient network error) is also before the
+            // install() boundary and must not bypass the Electron fallback.
+            mockCanDownload.mockRejectedValue(new Error('network error'))
+
+            const result = await setupChromedriver('/cache', '130.0.6723.58', {
+                browserName: 'chrome'
+            })
+
+            expect(result).toEqual({ executablePath: '/path/to/chromedriver' })
+            // resolveBuildId succeeded before canDownload rejected, so the resolved build is reused.
+            const installCall = mockInstall.mock.calls[0][0]
+            expect(installCall.buildId).toBe('130.0.6723.58')
+            expect(installCall.providers).toBeDefined()
+        })
+
+        it('resolves stable via the Electron release when CfT resolution rejects and no Chrome is installed on Linux ARM64', async () => {
+            Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
+            mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)
+            // The Chromedriver lookup rejects; with no concrete version to hand the Electron
+            // provider, the fallback resolves stable via the always-served LINUX platform.
+            mockResolveBuildId
+                .mockRejectedValueOnce(new Error('CfT unavailable'))
+                .mockResolvedValueOnce('131.0.6778.85')
+
+            await setupChromedriver('/cache', undefined, {
+                browserName: 'chrome'
+            })
+
+            expect(mockResolveBuildId).toHaveBeenCalledWith(
+                Browser.CHROME,
+                BrowserPlatform.LINUX,
+                'stable'
+            )
+            const installCall = mockInstall.mock.calls[0][0]
+            expect(installCall.buildId).toBe('131.0.6778.85')
+            expect(installCall.providers).toBeDefined()
+        })
+
+        it('does not fall back to the Electron release when CfT resolution rejects on Linux x64', async () => {
+            Object.defineProperty(process, 'arch', { value: 'x64', configurable: true })
+            mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)
+            // x64 is served by Chrome for Testing, so a resolution failure is genuine: it must
+            // surface unchanged rather than being masked by an Electron download attempt.
+            mockResolveBuildId.mockRejectedValue(new Error('CfT unavailable'))
+
+            await expect(
+                setupChromedriver('/cache', '130.0.6723.58', { browserName: 'chrome' })
+            ).rejects.toThrow('CfT unavailable')
+
+            expect(mockInstall).not.toHaveBeenCalled()
+        })
+
         it('resolves the Chromedriver build for "stable" on Linux ARM64 when no Chrome is installed', async () => {
             Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)

@@ -393,26 +393,49 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
     } else {
         // Use standard Chrome chromedriver logic (no Electron provider)
         const version = driverVersion || getBuildIdByChromePath(await locateChromeSafely()) || ChromeReleaseChannel.STABLE
-        buildId = await resolveBuildId(Browser.CHROMEDRIVER, platform, version)
-        // If Chrome for Testing has no binary for this exact build, fall back to the
-        // newest known-good build for the same Chrome major.
-        const canDownloadExact = await canDownload({ cacheDir, buildId, platform, browser: Browser.CHROMEDRIVER, unpack: true })
-        if (!canDownloadExact) {
-            // Derive the major from the *resolved* buildId, not `version`: when no Chrome is
-            // detected `version` is the 'stable' channel string, whose major is empty — which
-            // would make resolveBuildId throw and skip the Linux-ARM64 Electron fallback below.
-            const major = getMajorVersionFromString(buildId)
-            log.warn(`Chromedriver v${buildId} not available, resolving a known good version for major v${major}...`)
-            const knownGood = await resolveBuildId(Browser.CHROMEDRIVER, platform, major)
-            if (knownGood) {
-                buildId = knownGood
-            } else if (!electronFallbackAvailable) {
-                throw new Error(`Couldn't resolve a known good Chromedriver for major v${major} (requested v${version})`)
+        // These Chrome-for-Testing lookups run *before* the install() error boundary below, so
+        // on Linux ARM64 a rejection here (a CfT outage, or a Chromium milestone CfT never served
+        // for arm64) would terminate setup without ever reaching the advertised Electron-release
+        // fallback. Catch it and route to the Electron provider, matching the install-time
+        // fallback further down. On CfT-served platforms the failure is genuine, so rethrow.
+        let resolvedBuildId: string | undefined
+        try {
+            resolvedBuildId = await resolveBuildId(Browser.CHROMEDRIVER, platform, version)
+            // If Chrome for Testing has no binary for this exact build, fall back to the
+            // newest known-good build for the same Chrome major.
+            const canDownloadExact = await canDownload({ cacheDir, buildId: resolvedBuildId, platform, browser: Browser.CHROMEDRIVER, unpack: true })
+            if (!canDownloadExact) {
+                // Derive the major from the *resolved* buildId, not `version`: when no Chrome is
+                // detected `version` is the 'stable' channel string, whose major is empty — which
+                // would make resolveBuildId throw and skip the Linux-ARM64 Electron fallback below.
+                const major = getMajorVersionFromString(resolvedBuildId)
+                log.warn(`Chromedriver v${resolvedBuildId} not available, resolving a known good version for major v${major}...`)
+                const knownGood = await resolveBuildId(Browser.CHROMEDRIVER, platform, major)
+                if (knownGood) {
+                    resolvedBuildId = knownGood
+                } else if (!electronFallbackAvailable) {
+                    throw new Error(`Couldn't resolve a known good Chromedriver for major v${major} (requested v${version})`)
+                }
+                // On Linux ARM64 with no known-good CfT build, keep the exact buildId and let the
+                // install below fall through to the Electron-release fallback in the catch block.
             }
-            // On Linux ARM64 with no known-good CfT build, keep the exact buildId and let the
-            // install below fall through to the Electron-release fallback in the catch block.
+            buildId = resolvedBuildId
+            log.info(`Using standard Chrome chromedriver logic, resolved buildId=${buildId}`)
+        } catch (error) {
+            if (!electronFallbackAvailable) {
+                throw error
+            }
+            log.warn(`Chrome for Testing couldn't resolve Chromedriver for ${platform}: ${error instanceof Error ? error.message : String(error)}. Falling back to Electron releases...`)
+            // The Electron provider maps a concrete Chromium version → Electron release, so it
+            // needs a real version, not the 'stable' channel string. Prefer the build we resolved
+            // before failing, then the detected/requested version, then stable resolved via
+            // BrowserPlatform.LINUX (always served by CfT) purely to obtain a version to map.
+            buildId = resolvedBuildId
+                ?? (version !== ChromeReleaseChannel.STABLE
+                    ? version
+                    : await resolveBuildId(Browser.CHROME, BrowserPlatform.LINUX, ChromeReleaseChannel.STABLE))
+            providers = [new ElectronChromedriverProvider()]
         }
-        log.info(`Using standard Chrome chromedriver logic, resolved buildId=${buildId}`)
     }
 
     const installOptions = {
