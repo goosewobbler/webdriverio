@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Browser, BrowserPlatform } from '@puppeteer/browsers'
+import { Browser, BrowserPlatform, type InstalledBrowser } from '@puppeteer/browsers'
 import path from 'node:path'
 
 import { setupChromedriver } from '../../src/node/utils.js'
@@ -36,6 +36,25 @@ const mockResolveBuildId = vi.mocked((await import('@puppeteer/browsers')).resol
 const mockDetectBrowserPlatform = vi.mocked((await import('@puppeteer/browsers')).detectBrowserPlatform)
 const mockCanDownload = vi.mocked((await import('@puppeteer/browsers')).canDownload)
 
+// A resolved install() result; override buildId/platform per case.
+const installedChromedriver = (overrides: Partial<InstalledBrowser> = {}): InstalledBrowser => ({
+    executablePath: '/path/to/chromedriver',
+    browser: Browser.CHROMEDRIVER,
+    buildId: '130.0.6723.58',
+    platform: BrowserPlatform.LINUX_ARM,
+    path: '/cache/chromedriver',
+    ...overrides
+})
+
+// _install retries once internally, so the primary attempt is two rejections; the fallback
+// then succeeds on its first try — the third install() call the assertions read as calls[2].
+const mockInstallFailsThenSucceeds = (message: string, resolved: InstalledBrowser = installedChromedriver()) => {
+    mockInstall
+        .mockRejectedValueOnce(new Error(message))
+        .mockRejectedValueOnce(new Error(message))
+        .mockResolvedValueOnce(resolved)
+}
+
 describe('setupChromedriver', () => {
     const originalArch = process.arch
     const originalPlatform = process.platform
@@ -47,13 +66,7 @@ describe('setupChromedriver', () => {
         // combined with a test's arch==='arm64' trips isWindowsArm64 and routes to the Electron
         // provider. The Windows/macOS cases override process.platform explicitly below.
         Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
-        mockInstall.mockResolvedValue({
-            executablePath: '/path/to/chromedriver',
-            browser: Browser.CHROMEDRIVER,
-            buildId: '130.0.6723.58',
-            platform: BrowserPlatform.LINUX_ARM,
-            path: '/cache/chromedriver'
-        })
+        mockInstall.mockResolvedValue(installedChromedriver())
         mockResolveBuildId.mockResolvedValue('130.0.6723.58')
         // Default: the exact build is downloadable from Chrome for Testing.
         mockCanDownload.mockResolvedValue(true)
@@ -91,18 +104,8 @@ describe('setupChromedriver', () => {
             Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX)
 
-            // Primary CfT install fails (_install retries once → two rejections); the Electron
-            // fallback then succeeds on its first attempt (the third install call).
-            mockInstall
-                .mockRejectedValueOnce(new Error('CfT arm64 build missing'))
-                .mockRejectedValueOnce(new Error('CfT arm64 build missing'))
-                .mockResolvedValueOnce({
-                    executablePath: '/path/to/chromedriver',
-                    browser: Browser.CHROMEDRIVER,
-                    buildId: '130.0.6723.58',
-                    platform: BrowserPlatform.LINUX_ARM,
-                    path: '/cache/chromedriver'
-                })
+            // Primary CfT install fails; the Electron fallback then succeeds.
+            mockInstallFailsThenSucceeds('CfT arm64 build missing')
 
             const result = await setupChromedriver('/cache', '130.0.6723.58', {
                 browserName: 'chrome'
@@ -419,18 +422,7 @@ describe('setupChromedriver', () => {
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.MAC)
             mockResolveBuildId.mockResolvedValue('130.0.0.0') // Fallback resolves to a different build
 
-            // _install retries once internally, so the primary attempt is two rejections;
-            // the fallback attempt then succeeds on its first try.
-            mockInstall
-                .mockRejectedValueOnce(new Error('Download failed'))
-                .mockRejectedValueOnce(new Error('Download failed'))
-                .mockResolvedValueOnce({
-                    executablePath: '/path/to/chromedriver',
-                    browser: Browser.CHROMEDRIVER,
-                    buildId: '130.0.0.0',
-                    platform: BrowserPlatform.MAC,
-                    path: '/cache/chromedriver'
-                })
+            mockInstallFailsThenSucceeds('Download failed', installedChromedriver({ buildId: '130.0.0.0', platform: BrowserPlatform.MAC }))
 
             const result = await setupChromedriver('/cache', undefined, {
                 browserName: 'chrome',
@@ -443,9 +435,8 @@ describe('setupChromedriver', () => {
                 BrowserPlatform.MAC,
                 expect.anything()
             )
-            // The fallback build was resolved against CfT, so it must download directly
-            // from CfT (no Electron provider). _install retries once, so the fallback
-            // attempt is the third install call.
+            // The fallback build was resolved against CfT, so it downloads directly from CfT
+            // (no Electron provider) — asserted on the fallback (third) install() call.
             const fallbackInstallCall = mockInstall.mock.calls[2][0]
             expect(fallbackInstallCall.providers).toBeUndefined()
         })
@@ -471,18 +462,8 @@ describe('setupChromedriver', () => {
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.LINUX_ARM)
             mockResolveBuildId.mockResolvedValue('130.0.0.0') // CfT fallback build for the major
 
-            // Electron-primary attempt fails (_install retries once → two rejections); the
-            // Chrome-for-Testing fallback then succeeds on its first try (the third call).
-            mockInstall
-                .mockRejectedValueOnce(new Error('Electron release missing'))
-                .mockRejectedValueOnce(new Error('Electron release missing'))
-                .mockResolvedValueOnce({
-                    executablePath: '/path/to/chromedriver',
-                    browser: Browser.CHROMEDRIVER,
-                    buildId: '130.0.0.0',
-                    platform: BrowserPlatform.LINUX_ARM,
-                    path: '/cache/chromedriver'
-                })
+            // Electron-primary attempt fails; the Chrome-for-Testing fallback then succeeds.
+            mockInstallFailsThenSucceeds('Electron release missing', installedChromedriver({ buildId: '130.0.0.0' }))
 
             const result = await setupChromedriver('/cache', undefined, {
                 browserName: 'chrome',
