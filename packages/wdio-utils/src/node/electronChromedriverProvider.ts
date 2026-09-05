@@ -20,7 +20,8 @@ export interface ElectronChromedriverProviderOptions {
      *
      * @example
      * ```typescript
-     * // Only use for ARM64 Linux, let Chrome for Testing handle others
+     * // Restrict this provider to Linux ARM64, where it acts as the fallback
+     * // source behind Chrome for Testing; other platforms use their default source
       * new ElectronChromedriverProvider({ platforms: [BrowserPlatform.LINUX_ARM] })
      * ```
      */
@@ -191,8 +192,10 @@ async function resolveElectronVersion(buildId: string, versionMapping?: Record<s
 /**
  * Browser provider that uses Electron releases for Chromedriver.
  *
- * This is particularly useful for platforms where Chrome for Testing
- * doesn't provide binaries, such as Linux ARM64.
+ * This serves two roles: the primary source on platforms Chrome for Testing
+ * does not build at all, such as Windows ARM64, and a fallback where Chrome for
+ * Testing's coverage is incomplete, such as Chromium milestones on Linux ARM64
+ * that predate its arm64 Chromedriver.
  *
  * **Version Mapping Strategy:**
  *
@@ -211,7 +214,7 @@ async function resolveElectronVersion(buildId: string, versionMapping?: Record<s
  * // For Electron apps - pass Electron version
  * const buildId = electronVersion; // "33.2.1"
  *
- * // For non-Electron apps - pass Chromium version, restrict to ARM64
+ * // For non-Electron apps - pass a Chromium version; scope the provider to Linux ARM64
  * const providers = [
  *   new ElectronChromedriverProvider({
  *     platforms: [BrowserPlatform.LINUX_ARM]
