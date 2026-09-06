@@ -308,23 +308,12 @@ function parseElectronCapabilities(capabilities?: WebdriverIO.Capabilities) {
     }
 }
 
-function resolveChromedriverPlatform(): BrowserPlatform {
+export async function setupChromedriver (cacheDir: string, driverVersion?: string, capabilities?: WebdriverIO.Capabilities) {
+    // detectBrowserPlatform() already resolves linux+arm64 to BrowserPlatform.LINUX_ARM.
     const platform = detectBrowserPlatform()
-    const actualPlatform = (platform === BrowserPlatform.LINUX && process.arch === 'arm64') ? BrowserPlatform.LINUX_ARM : platform
-
-    if (actualPlatform !== platform) {
-        log.info(`Overriding platform from ${platform} to ${actualPlatform} for ARM Linux`)
-    }
-
-    if (!actualPlatform) {
+    if (!platform) {
         throw new Error('The current platform is not supported.')
     }
-
-    return actualPlatform
-}
-
-export async function setupChromedriver (cacheDir: string, driverVersion?: string, capabilities?: WebdriverIO.Capabilities) {
-    const platform = resolveChromedriverPlatform()
     const { chromiumVersion, electronVersion } = parseElectronCapabilities(capabilities)
 
     // Chrome for Testing now ships linux-arm64 Chromedriver, so Linux ARM64 takes the standard
