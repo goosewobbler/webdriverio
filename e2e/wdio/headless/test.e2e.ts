@@ -251,7 +251,10 @@ describe('main suite 1', () => {
         })
 
         inputs.forEach((input) => {
-            it(`moves to position x,y outside of iframe when passing the arguments ${JSON.stringify(input)}`, async () => {
+            it(`moves to position x,y outside of iframe when passing the arguments ${JSON.stringify(input)}`, async function() {
+                // Unstable test, retry up to 3 times `Expected: 90 Received: 504` with when input = `{"xOffset":10}`
+                this.retries(3)
+
                 await setupMouseTracking()
                 await browser.$('#parent').moveTo()
                 const rectBefore = await waitForMousePosition(0)
@@ -636,7 +639,8 @@ describe('main suite 1', () => {
             await closeAllWindowsButFirst()
         })
 
-        it('should allow user to switch between contexts', async () => {
+        it('should allow user to switch between contexts', async function() {
+            this.retries(3) // Unstable fails with `Error: Timeout`
             await browser.url('https://guinea-pig.webdriver.io/')
 
             await browser.newWindow('https://webdriver.io')
@@ -700,7 +704,8 @@ describe('main suite 1', () => {
             await browser.switchFrame(null)
         })
 
-        it('can switch to a frame via url', async () => {
+        it('can switch to a frame via url', async function() {
+            this.retries(3) // Unstable fails with `Error: Timeout`
             await browser.url('https://guinea-pig.webdriver.io/iframe.html')
             await browser.switchFrame('https://guinea-pig.webdriver.io/iframeA2.html')
             expect(await browser.execute(() => [document.title, document.URL]))
@@ -841,8 +846,9 @@ describe('main suite 1', () => {
     })
 
     describe('open resources with different protocols', () => {
-        it('http', async () => {
-            browser.url('https://guinea-pig.webdriver.io/')
+        it('http', async function() {
+            this.retries(3) // Unstable fails with `Error: Timeout`
+            await browser.url('https://guinea-pig.webdriver.io/')
             await expect(browser).toHaveUrl('https://guinea-pig.webdriver.io/')
         })
 
@@ -914,7 +920,8 @@ describe('main suite 1', () => {
             hash: ['#reloadCounter', '0']
         }
         for (const [name, [value, expected]] of Object.entries(scenarios)) {
-            it(`reloads with ${name}`, async () => {
+            it(`reloads with ${name}`, async function() {
+                this.retries(3) // Unstable test `Expected: "0" Received: "1"` on `reloads with nothing`
                 const url = `https://guinea-pig.webdriver.io/reloadCounter.html${value}`
                 await browser.url(url)
                 await $('#reset').click()
