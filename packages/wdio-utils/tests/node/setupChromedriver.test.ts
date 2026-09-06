@@ -61,10 +61,8 @@ describe('setupChromedriver', () => {
 
     beforeEach(() => {
         vi.clearAllMocks()
-        // Default to a Linux host so the ARM64 cases exercise the linux-arm64 path regardless
-        // of the CI runner OS. Without this, a Windows runner's native process.platform==='win32'
-        // combined with a test's arch==='arm64' trips isWindowsArm64 and routes to the Electron
-        // provider. The Windows/macOS cases override process.platform explicitly below.
+        // Default to a Linux host so the `arch: 'arm64'` cases resolve to BrowserPlatform.LINUX_ARM
+        // regardless of the CI runner OS. The Windows/macOS cases override process.platform below.
         Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
         mockInstall.mockResolvedValue(installedChromedriver())
         mockResolveBuildId.mockResolvedValue('130.0.6723.58')
@@ -241,23 +239,21 @@ describe('setupChromedriver', () => {
             expect(installCall.providers).toBeUndefined()
         })
 
-        it('should use Electron provider on Windows ARM64 without explicit capabilities', async () => {
+        it('uses the standard Chrome for Testing (x64) driver on Windows ARM64 without explicit capabilities', async () => {
+            // detectBrowserPlatform() reports WIN64 on Windows ARM64, and the win64 (x64)
+            // Chromedriver runs under Windows' transparent x64 emulation and drives native ARM64
+            // Chrome over CDP — so there's nothing to force to the Electron provider.
             Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
             Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.WIN64)
-            mockResolveBuildId.mockResolvedValueOnce('130.0.6723.58')
 
-            const result = await setupChromedriver('/cache', undefined, {
+            await setupChromedriver('/cache', '130.0.6723.58', {
                 browserName: 'chrome'
             })
 
-            expect(result).toEqual({
-                executablePath: '/path/to/chromedriver'
-            })
-
             const installCall = mockInstall.mock.calls[0][0]
-            expect(installCall.providers).toBeDefined()
-            expect(installCall.providers).toHaveLength(1)
+            expect(installCall.platform).toBe(BrowserPlatform.WIN64)
+            expect(installCall.providers).toBeUndefined()
         })
 
         it('should NOT use fallback on Windows x64', async () => {
@@ -416,8 +412,6 @@ describe('setupChromedriver', () => {
     describe('error handling', () => {
         it('should fall back to a Chrome-for-Testing build when the Electron download fails on a supported platform', async () => {
             // macOS is served by Chrome for Testing, so the catch-block fallback applies.
-            // process.platform must be non-win32 here or isWindowsArm64 could flip the
-            // platform into the "needs alternative provider" bucket (state leaks between tests).
             Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
             mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.MAC)
             mockResolveBuildId.mockResolvedValue('130.0.0.0') // Fallback resolves to a different build
@@ -473,30 +467,6 @@ describe('setupChromedriver', () => {
             expect(result).toEqual({ executablePath: '/path/to/chromedriver' })
             const fallbackCall = mockInstall.mock.calls[2][0]
             expect(fallbackCall.providers).toBeUndefined()
-        })
-
-        it('should re-throw the original error on Windows ARM64, which Chrome for Testing does not serve', async () => {
-            // Windows ARM64 has no CfT Chromedriver, so there is no fallback to attempt: the
-            // original Electron download error must surface unchanged rather than being replaced
-            // by a confusing Chrome-for-Testing API error from the fallback path.
-            Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true })
-            Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-            mockDetectBrowserPlatform.mockReturnValue(BrowserPlatform.WIN64)
-            mockResolveBuildId.mockResolvedValue('130.0.0.0')
-            mockInstall.mockRejectedValue(new Error('Download failed'))
-
-            await expect(
-                setupChromedriver('/cache', undefined, {
-                    browserName: 'chrome',
-                    'wdio:chromiumVersion': '130.0.6723.58'
-                })
-            ).rejects.toThrow('Download failed')
-
-            expect(mockResolveBuildId).not.toHaveBeenCalledWith(
-                Browser.CHROMEDRIVER,
-                expect.anything(),
-                expect.anything()
-            )
         })
     })
 
