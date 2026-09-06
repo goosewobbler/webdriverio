@@ -1,0 +1,44 @@
+name: Windows ARM64 Chromedriver Check
+
+# Confirms, on real Windows ARM64 hardware, the assumption behind letting WebdriverIO fall back
+# to the standard win64 (x64) Chromedriver on Windows ARM64: that the x64 Chromedriver runs under
+# Windows' transparent x64 emulation and drives a *native* ARM64 Chrome over CDP. If this ever
+# stops holding, this job goes red and the win/arm64 handling needs revisiting.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/wdio-utils/src/node/utils.ts'
+      - 'packages/wdio-utils/src/node/electronChromedriverProvider.ts'
+      - '.github/workflows/test-win-arm64-chromedriver.yml'
+      - '.github/scripts/win-arm64-crossarch.mjs'
+
+jobs:
+  cross-arch:
+    name: x64 Chromedriver drives native ARM64 Chrome
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install native ARM64 Google Chrome
+        shell: pwsh
+        run: |
+          # winget selects the ARM64 Chrome build on ARM64 hardware. It returns a non-zero
+          # "no applicable update" code when Chrome is already present, so tolerate the exit code
+          # here — the smoke test below verifies Chrome is actually present and native ARM64.
+          winget install --id Google.Chrome --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          exit 0
+
+      - name: Cross-arch smoke test
+        shell: pwsh
+        run: node .github/scripts/win-arm64-crossarch.mjs
