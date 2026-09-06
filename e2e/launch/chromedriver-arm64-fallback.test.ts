@@ -168,7 +168,7 @@ describe('Chromedriver Linux ARM64 download', () => {
                 logLevel: 'info',
                 capabilities: {
                     browserName: 'chrome',
-                    // No version pinned — setup should auto-resolve stable and map it to an Electron release
+                    // No version pinned, so setup auto-resolves stable and maps it to an Electron release
                     'goog:chromeOptions': {
                         args: ['--headless', '--no-sandbox', '--disable-gpu']
                     }
@@ -205,11 +205,8 @@ describe('Chromedriver Linux ARM64 download', () => {
     })
 })
 
-// NOTE: platform-mocked source-selection logic (ARM64 prefers Chrome for Testing and
-// falls back to the Electron provider, x64 always uses CfT) is covered without real
-// network access by the unit suite — see
-// packages/wdio-utils/tests/node/setupChromedriver.test.ts ("should use Chrome for
-// Testing first on Linux ARM64…", "should fall back to the Electron release when Chrome
-// for Testing fails on Linux ARM64" and "should NOT use fallback on Linux x64"). Those
-// assertions intentionally live there rather than in this e2e file, which is reserved
-// for real browser sessions on actual ARM64 hardware.
+// NOTE: the platform-mocked source-selection logic (ARM64 prefers Chrome for Testing and
+// falls back to the Electron provider; x64 always uses CfT) is covered without real network
+// access in packages/wdio-utils/tests/node/setupChromedriver.test.ts. Those assertions live
+// there rather than in this e2e file, which is reserved for real browser sessions on actual
+// ARM64 hardware.

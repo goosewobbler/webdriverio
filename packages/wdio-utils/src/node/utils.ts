@@ -346,7 +346,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
             const canDownloadExact = await canDownload({ cacheDir, buildId: resolvedBuildId, platform, browser: Browser.CHROMEDRIVER, unpack: true })
             if (!canDownloadExact) {
                 // Derive the major from the resolved buildId, not `version`: when no Chrome is
-                // detected `version` is the 'stable' channel string, whose major is empty — which
+                // detected `version` is the 'stable' channel string, whose major is empty, which
                 // would make resolveBuildId throw and skip the Linux-ARM64 Electron fallback below.
                 const major = getMajorVersionFromString(resolvedBuildId)
                 log.warn(`Chromedriver v${resolvedBuildId} not available, resolving a known good version for major v${major}...`)

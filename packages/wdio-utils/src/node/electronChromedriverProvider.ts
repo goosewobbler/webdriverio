@@ -35,13 +35,7 @@ export interface ElectronChromedriverProviderOptions {
 
     /**
      * Optional custom version mapping from Chromium version to Electron version.
-     * Has the highest priority in the version resolution fallback chain.
-     *
-     * The version resolution order is:
-     * 1. Custom versionMapping (if provided)
-     * 2. Cached electronjs.org mappings (if initializeElectronMappings() was called)
-     * 3. electron-to-chromium package (always available)
-     *
+     * Takes priority over the electronjs.org and electron-to-chromium lookups below.
      * Only provide this if you need to override specific version mappings.
      *
      * @example
@@ -85,7 +79,7 @@ function fetchChromiumToElectronMapping(): Promise<Record<string, string>> {
         log.debug('Fetching Electron releases for Chromium → Electron version mapping...')
         const response = await fetch('https://electronjs.org/headers/index.json')
         // Guard against non-2xx responses (e.g. rate limiting) whose body may still
-        // parse as JSON — without this the reverse mapping would silently be built
+        // parse as JSON; without this the reverse mapping would silently be built
         // empty and cached for the process lifetime, never falling back to the package.
         if (!response.ok) {
             throw new Error(`Failed to fetch Electron releases: HTTP ${response.status} ${response.statusText}`)
@@ -148,12 +142,9 @@ function mapPlatformForElectron(platform: BrowserPlatform): string {
 /**
  * Resolves a version to an Electron version.
  * Handles both Electron versions (pass-through) and Chromium versions (mapped).
- *
- * Attempts to fetch the latest mappings from electronjs.org first,
- * then falls back to the electron-to-chromium package.
  */
 async function resolveElectronVersion(buildId: string, versionMapping?: Record<string, string>): Promise<string | null> {
-    // Electron versions are 3-part, Chromium build ids 4-part — except a truncated
+    // Electron versions are 3-part, Chromium build ids 4-part, except a truncated
     // 3-part Chromium id, which CHROMIUM_MIN_MAJOR_VERSION catches below.
     const electronVersionMatch = /^(\d+)\.\d+\.\d+$/.exec(buildId)
     if (electronVersionMatch && Number(electronVersionMatch[1]) < CHROMIUM_MIN_MAJOR_VERSION) {
