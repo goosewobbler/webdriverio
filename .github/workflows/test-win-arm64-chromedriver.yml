@@ -33,11 +33,14 @@ jobs:
       - name: Install native ARM64 Google Chrome
         shell: pwsh
         run: |
-          # winget selects the ARM64 Chrome build on ARM64 hardware. It returns a non-zero
-          # "no applicable update" code when Chrome is already present, so tolerate the exit code
-          # here — the smoke test below verifies Chrome is actually present and native ARM64.
-          winget install --id Google.Chrome --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-          exit 0
+          # windows-11-arm has no winget, so install from Google's ARM64 enterprise MSI directly.
+          # The smoke test below verifies the installed Chrome is actually native ARM64.
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $msi = Join-Path $env:RUNNER_TEMP 'chrome_arm64.msi'
+          Invoke-WebRequest -Uri 'https://dl.google.com/dl/chrome/install/GoogleChromeStandaloneEnterprise_Arm64.msi' -OutFile $msi
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "msiexec failed with exit code $($p.ExitCode)" }
 
       - name: Cross-arch smoke test
         shell: pwsh

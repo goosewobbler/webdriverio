@@ -7,9 +7,9 @@
 // Exits non-zero on any failure so CI goes red if the assumption ever stops holding.
 
 import { execSync, spawn } from 'node:child_process'
-import { existsSync, openSync, readSync, closeSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, openSync, readSync, closeSync, mkdtempSync, writeFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 
 const PORT = 9515
 
@@ -43,15 +43,12 @@ function findChrome() {
 }
 
 function chromeVersion(chrome) {
-    // Windows Chrome doesn't print its version to stdout, so read the file's product version.
-    const out = execSync(
-        `powershell -NoProfile -Command "(Get-Item '${chrome}').VersionInfo.ProductVersion"`,
-        { encoding: 'utf8' }
-    ).trim()
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(out)) {
-        throw new Error(`Could not read a 4-part Chrome version (got "${out}")`)
+    // Chrome installs a version-named folder (e.g. Application\152.0.7977.82) next to chrome.exe.
+    const version = readdirSync(dirname(chrome)).find((n) => /^\d+\.\d+\.\d+\.\d+$/.test(n))
+    if (!version) {
+        throw new Error(`Could not determine Chrome version from ${dirname(chrome)}`)
     }
-    return out
+    return version
 }
 
 async function downloadWin64Chromedriver(version, dir) {
