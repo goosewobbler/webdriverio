@@ -81,12 +81,12 @@ Type: `boolean`
 
 #### `wdio:electronVersion`
 
-Specify the Electron version to use for downloading Chromedriver. When set, WebdriverIO will download Chromedriver from [Electron releases](https://github.com/electron/electron/releases) instead of Chrome for Testing. This is useful for:
+Specify the Electron version to use for downloading Chromedriver. When set, WebdriverIO downloads the Chromedriver bundled with that Electron release instead of using Chrome for Testing. This is useful for:
 
-- Testing Electron applications — the app's Chromium is guaranteed to be an Electron-shipped build
+- Testing Electron applications (the app's Chromium is an Electron-shipped build by construction)
 - Sourcing a native ARM64 Chromedriver on a Linux ARM64 milestone Chrome for Testing doesn't serve yet
 
-If neither `wdio:electronVersion` nor `wdio:chromiumVersion` is set, WebdriverIO still picks the right source automatically per platform — see the **ARM64 Platform Support** note below.
+If it isn't set, WebdriverIO still picks the right source automatically per platform; see the **ARM64 Platform Support** note below.
 
 Type: `string`
 
@@ -98,30 +98,14 @@ Example:
 }
 ```
 
-#### `wdio:chromiumVersion`
-
-Specify the Chromium version to use for downloading Chromedriver from Electron releases. When set, WebdriverIO will map the Chromium version to the corresponding Electron version and download from Electron releases.
-
-This is useful when you know the Chromium version but not the exact Electron version, or when you want to source Chromedriver from the matching Electron release rather than Chrome for Testing.
-
-Type: `string`
-
-Example:
-```js
-{
-  browserName: 'chrome',
-  'wdio:chromiumVersion': '130.0.6723.2'
-}
-```
-
 :::info ARM64 Platform Support
 
-On ARM64 systems WebdriverIO sets up Chromedriver automatically — see [Chromedriver on ARM64](arm64-chromedriver) for the full picture:
+On ARM64 systems WebdriverIO sets up Chromedriver automatically; see [Chromedriver on ARM64](arm64-chromedriver) for the full picture:
 
-- **Windows ARM64** — uses the `win64` (x64) Chromedriver under Windows' transparent x64 emulation, which drives native ARM64 Chrome. No configuration required.
-- **Linux ARM64** — Chrome for Testing where it serves the build (Chromium 154+), with a matching Electron release as an automatic fallback below that floor.
+- **Windows ARM64**: uses the `win64` (x64) Chromedriver under Windows' transparent x64 emulation, which drives native ARM64 Chrome. No configuration required.
+- **Linux ARM64**: Chrome for Testing where it serves the build (Chromium `153.0.8001.0`+), with a matching Electron release as an automatic fallback below that floor.
 
-`wdio:electronVersion` / `wdio:chromiumVersion` opt into an Electron-release Chromedriver explicitly — for Electron apps, or to pin a covered build.
+Set `wdio:electronVersion` to opt into an Electron-release Chromedriver explicitly, e.g. for an Electron app.
 
 :::
 

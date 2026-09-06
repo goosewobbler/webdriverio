@@ -123,40 +123,6 @@ describe('Chromedriver Linux ARM64 download', () => {
         }, 180000)
     })
 
-    describe('explicit Chromium version capability', () => {
-        it('should map Chromium version to Electron release', async () => {
-            const chromeMajor = detectSystemChromeMajor()
-            if (chromeMajor !== ELECTRON_33_CHROMIUM_MAJOR) {
-                console.log(`Skipping explicit-Chromium-version test (system Chrome major ${chromeMajor ?? 'unknown'} != ${ELECTRON_33_CHROMIUM_MAJOR})`)
-                return
-            }
-
-            const options: RemoteOptions = {
-                logLevel: 'info',
-                capabilities: {
-                    browserName: 'chrome',
-                    'wdio:chromiumVersion': '130.0.6723.2',
-                    'goog:chromeOptions': {
-                        args: [
-                            '--headless',
-                            '--no-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-gpu'
-                        ]
-                    }
-                }
-            }
-
-            browser = await remote(options)
-
-            expect(browser.sessionId).toBeDefined()
-
-            await browser.url('data:text/html,<h1>Test</h1>')
-            const h1Text = await browser.$('h1').getText()
-            expect(h1Text).toBe('Test')
-        }, 180000)
-    })
-
     describe('version resolution', () => {
         it('should work without specifying browser version', async () => {
             if (process.platform !== 'linux' || process.arch !== 'arm64') {
@@ -191,7 +157,7 @@ describe('Chromedriver Linux ARM64 download', () => {
                 logLevel: 'error',
                 capabilities: {
                     browserName: 'chrome',
-                    'wdio:chromiumVersion': 'invalid.version.format',
+                    'wdio:electronVersion': 'invalid.version.format',
                     'goog:chromeOptions': {
                         args: ['--headless']
                     }

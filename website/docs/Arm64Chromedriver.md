@@ -25,9 +25,9 @@ ChromeDriver needs its first three version components (`major.minor.build`) to m
       'wdio:chromedriverOptions': { binary: '/usr/bin/chromedriver' }
   }]
   ```
-- **Pin to a covered version** with `wdio:chromiumVersion` (or `wdio:electronVersion` for an Electron app), which sources the driver from a matching Electron release.
+- **Pin to a covered version** with `wdio:electronVersion`, which sources the driver from that Electron release.
 - **Bring your own Chromedriver** with `wdio:chromedriverOptions.binary`, which disables the download entirely.
 
 ## Electron apps
 
-`wdio:electronVersion` and `wdio:chromiumVersion` download the Chromedriver bundled with a given Electron release, on both Linux and Windows ARM64. For an Electron app, whose Chromium is an Electron-shipped build by construction, this is an exact match. See [Capabilities](capabilities) for details.
+`wdio:electronVersion` downloads the Chromedriver bundled with a given Electron release, on both Linux and Windows ARM64. For an Electron app, whose Chromium is an Electron-shipped build by construction, this is an exact match. See [Capabilities](capabilities) for details.

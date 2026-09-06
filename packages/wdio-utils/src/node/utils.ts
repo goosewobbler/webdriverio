@@ -296,16 +296,12 @@ export function getMajorVersionFromString(fullVersion:string) {
 }
 
 /**
- * Reads the Electron capabilities from both flat and W3C (alwaysMatch) capability shapes.
+ * Reads `wdio:electronVersion` from both flat and W3C (alwaysMatch) capability shapes.
  */
-function parseElectronCapabilities(capabilities?: WebdriverIO.Capabilities) {
+function parseElectronVersion(capabilities?: WebdriverIO.Capabilities): string | undefined {
     const caps = (capabilities ?? {}) as Record<string, unknown> & { alwaysMatch?: Record<string, unknown> }
-    const read = (key: string): string | undefined =>
-        (caps[key] as string | undefined) || (caps.alwaysMatch?.[key] as string | undefined)
-    return {
-        chromiumVersion: read('wdio:chromiumVersion'),
-        electronVersion: read('wdio:electronVersion')
-    }
+    return (caps['wdio:electronVersion'] as string | undefined)
+        || (caps.alwaysMatch?.['wdio:electronVersion'] as string | undefined)
 }
 
 export async function setupChromedriver (cacheDir: string, driverVersion?: string, capabilities?: WebdriverIO.Capabilities) {
@@ -314,7 +310,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
     if (!platform) {
         throw new Error('The current platform is not supported.')
     }
-    const { chromiumVersion, electronVersion } = parseElectronCapabilities(capabilities)
+    const electronVersion = parseElectronVersion(capabilities)
 
     // Chrome for Testing now ships linux-arm64 Chromedriver, so Linux ARM64 takes the standard
     // CfT path below, with the Electron release as a fallback (`electronFallbackAvailable`).
@@ -326,11 +322,7 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
     if (electronVersion) {
         providers = [new ElectronChromedriverProvider()]
         buildId = electronVersion
-        log.info(`Using Electron provider with Electron v${buildId}${chromiumVersion ? ` (Chromium ${chromiumVersion})` : ''}`)
-    } else if (chromiumVersion) {
-        providers = [new ElectronChromedriverProvider()]
-        buildId = chromiumVersion
-        log.info(`Using Electron provider with Chromium v${buildId}`)
+        log.info(`Using Electron provider with Electron v${buildId}`)
     } else {
         const version = driverVersion || getBuildIdByChromePath(await locateChromeSafely()) || ChromeReleaseChannel.STABLE
         // These Chrome-for-Testing lookups run before the install() error boundary below, so on
@@ -393,33 +385,10 @@ export async function setupChromedriver (cacheDir: string, driverVersion?: strin
         installedBrowser = await _install(installOptions)
         log.info(`Chromedriver v${buildId} is ready`)
     } catch (error) {
-        // If the primary (Electron) download for an explicit Chromium version failed, retry
-        // against a Chrome-for-Testing build for the same major.
-        if (chromiumVersion) {
-            log.warn(`Chromedriver v${buildId} download failed, trying latest compatible version...`)
-            const fallbackVersion = getMajorVersionFromString(chromiumVersion)
-            const fallbackBuildId = await resolveBuildId(Browser.CHROMEDRIVER, platform, fallbackVersion)
-
-            if (fallbackBuildId !== buildId) {
-                log.info(`Trying fallback Chromedriver v${fallbackBuildId}`)
-                try {
-                    // fallbackBuildId was resolved against Chrome for Testing, so download
-                    // it directly from CfT (drop the Electron provider) instead of
-                    // re-mapping a CfT build id through the Electron release index.
-                    installedBrowser = await _install({ ...installOptions, buildId: fallbackBuildId, providers: undefined })
-                    log.info(`Chromedriver v${fallbackBuildId} is ready`)
-                    buildId = fallbackBuildId
-                } catch (fallbackError) {
-                    log.error(`Fallback Chromedriver download also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
-                    throw new Error(`Couldn't download Chromedriver v${buildId} or fallback v${fallbackBuildId}`)
-                }
-            } else {
-                throw new Error(`Couldn't download Chromedriver v${buildId}`)
-            }
-        } else if (electronFallbackAvailable && !providers) {
-            // Standard Chrome-for-Testing path failed on Linux ARM64 (Chromium milestone below
-            // CfT's arm64 floor, or a CfT outage). Retry the same build from the matching
-            // Electron release.
+        // Standard Chrome-for-Testing path failed on Linux ARM64 (Chromium milestone below
+        // CfT's arm64 floor, or a CfT outage). Retry the same build from the matching
+        // Electron release. Elsewhere the failure is genuine, so rethrow.
+        if (electronFallbackAvailable && !providers) {
             log.warn(`Chrome for Testing couldn't provide Chromedriver v${buildId} for ${platform}: ${error instanceof Error ? error.message : String(error)}. Falling back to Electron releases...`)
             installedBrowser = await _install({ ...installOptions, providers: [new ElectronChromedriverProvider()] })
             log.info(`Chromedriver v${buildId} is ready (via Electron fallback)`)
