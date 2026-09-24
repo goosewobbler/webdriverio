@@ -164,29 +164,18 @@ describe('integration: startDisplayDaemonFromConfig ↔ real fork', () => {
         expect(process.env.WAYLAND_DISPLAY).toBeUndefined()
     })
 
-    it('registers an exit listener that uses stopSync, not the abandonable async stop', async () => {
-        const stopSpy = vi.fn().mockResolvedValue(undefined)
-        const stopSyncSpy = vi.fn()
-        const server = makeDisplayServer({
+    it('installs no signal or exit listeners of its own', async () => {
+        const counts = () => ['SIGINT', 'SIGTERM', 'exit'].map((event) => process.listenerCount(event))
+        const before = counts()
+        const manager = makeManager(makeDisplayServer({
             name: 'xvfb',
-            startDaemon: async () => makeDaemonHandle({ env: { DISPLAY: ':99' }, stop: stopSpy, stopSync: stopSyncSpy }),
-        })
-        const manager = makeManager(server)
+            startDaemon: async () => makeDaemonHandle({ env: { DISPLAY: ':99' } }),
+        }))
 
-        const daemon = await startDisplayDaemonFromConfig(
-            {} as WebdriverIO.Config,
-            manager,
-        )
-        expect(daemon).not.toBeNull()
-        expect(process.env.DISPLAY).toBe(':99')
+        const daemon = await startDisplayDaemonFromConfig({} as WebdriverIO.Config, manager)
 
-        // Node abandons async work scheduled in an 'exit' listener, so cleanup must be sync.
-        process.emit('exit', 0)
-
-        expect(stopSyncSpy).toHaveBeenCalledTimes(1)
-        // Async path was NOT used — `void daemon.stop()` here would leave the daemon running.
-        expect(stopSpy).not.toHaveBeenCalled()
-        expect(process.env.DISPLAY).toBeUndefined()
+        expect(counts()).toEqual(before)
+        await daemon!.stop()
     })
 
     it('restores any prior process.env value the daemon overwrote, rather than deleting it', async () => {

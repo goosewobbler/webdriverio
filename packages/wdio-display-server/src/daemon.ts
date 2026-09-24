@@ -67,68 +67,24 @@ export async function startDisplayDaemonFromConfig(
     Object.assign(process.env, daemon.env)
     log.info(`Daemon ready (${manager.getDisplayServer()?.name}); env: ${JSON.stringify(daemon.env)}`)
 
-    // Memoize the in-flight stop promise (not a sync flag) so the 'exit' listener
-    // can still run daemon.stopSync() while an async stop() is mid-flight —
-    // otherwise 'exit' fires before stop() resolves and orphans the child.
+    // The daemon is killed on process exit by runDaemon; callers that handle signals call stop().
     let stopPromise: Promise<void> | null = null
-    let signalHandler: (() => void) | null = null
-    let exitHandler: (() => void) | null = null
-
-    const restoreEnv = (): void => {
-        for (const key of envKeys) {
-            if (key in savedEnv) {
-                process.env[key] = savedEnv[key]
-            } else {
-                delete process.env[key]
-            }
-        }
-    }
-
-    const deregisterHandlers = (): void => {
-        if (signalHandler) {
-            process.off('SIGINT', signalHandler)
-            process.off('SIGTERM', signalHandler)
-            signalHandler = null
-        }
-        if (exitHandler) {
-            process.off('exit', exitHandler)
-            exitHandler = null
-        }
-    }
-
     const stop = (): Promise<void> => {
-        if (stopPromise) {
-            return stopPromise
-        }
-        stopPromise = (async () => {
+        stopPromise ??= (async () => {
             try {
                 await daemon.stop()
             } finally {
-                restoreEnv()
-                deregisterHandlers()
+                for (const key of envKeys) {
+                    if (key in savedEnv) {
+                        process.env[key] = savedEnv[key]
+                    } else {
+                        delete process.env[key]
+                    }
+                }
             }
         })()
         return stopPromise
     }
-
-    // SIGINT/SIGTERM run with the event loop alive — full async stop() is fine.
-    // 'exit' listeners are sync; async work is abandoned, so call daemon.stopSync()
-    // before Node tears down. The display-server layer guards stopSync() against
-    // re-entry, so it's safe even after an async stop().
-    signalHandler = () => {
-        // Catch only to avoid an unhandled rejection; stop() cleans up in its own finally.
-        stop().catch((err) => log.error(`Failed to stop display daemon: ${err instanceof Error ? err.message : String(err)}`))
-    }
-    exitHandler = () => {
-        try {
-            daemon.stopSync()
-        } catch { /* swallow — 'exit' listeners must not throw */ }
-        restoreEnv()
-        // No deregisterHandlers() — we're exiting anyway.
-    }
-    process.once('SIGINT', signalHandler)
-    process.once('SIGTERM', signalHandler)
-    process.once('exit', exitHandler)
 
     return { stop }
 }
