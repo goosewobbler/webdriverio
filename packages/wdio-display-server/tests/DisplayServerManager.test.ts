@@ -6,7 +6,7 @@ const mockWayland = vi.hoisted(() => ({
     name: 'wayland' as const,
     isAvailable: vi.fn(),
     install: vi.fn(),
-    getChromeFlags: vi.fn(() => ['--ozone-platform=wayland', '--enable-features=UseOzonePlatform']),
+    getChromeFlags: vi.fn(() => ['--ozone-platform=wayland']),
     startDaemon: vi.fn(),
 }))
 const mockXvfb = vi.hoisted(() => ({
@@ -23,7 +23,7 @@ vi.mock('node:os', () => ({
 
 vi.mock('../src/WaylandDisplayServer.js', () => ({
     WaylandDisplayServer: vi.fn(() => mockWayland),
-    WAYLAND_CHROME_FLAGS: ['--ozone-platform=wayland', '--enable-features=UseOzonePlatform'],
+    WAYLAND_CHROME_FLAGS: ['--ozone-platform=wayland'],
 }))
 
 vi.mock('../src/XvfbDisplayServer.js', () => ({
@@ -189,7 +189,6 @@ describe('DisplayServerManager (gap coverage)', () => {
 
                 expect(caps['goog:chromeOptions']?.args).toEqual([
                     '--ozone-platform=wayland',
-                    '--enable-features=UseOzonePlatform',
                 ])
             } finally {
                 delete process.env.WAYLAND_DISPLAY
@@ -246,7 +245,6 @@ describe('DisplayServerManager (gap coverage)', () => {
             expect(caps['goog:chromeOptions']!.args).toEqual([
                 '--disable-gpu',
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -260,7 +258,6 @@ describe('DisplayServerManager (gap coverage)', () => {
 
             expect(caps['goog:chromeOptions']?.args).toEqual([
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -271,7 +268,7 @@ describe('DisplayServerManager (gap coverage)', () => {
 
             const caps = {
                 'goog:chromeOptions': {
-                    args: ['--ozone-platform=wayland', '--enable-features=UseOzonePlatform'],
+                    args: ['--ozone-platform=wayland'],
                 },
             } as WebdriverIO.Capabilities
 
@@ -279,7 +276,6 @@ describe('DisplayServerManager (gap coverage)', () => {
 
             expect(caps['goog:chromeOptions']!.args).toEqual([
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -293,7 +289,6 @@ describe('DisplayServerManager (gap coverage)', () => {
 
             expect(caps['ms:edgeOptions']?.args).toEqual([
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -307,7 +302,6 @@ describe('DisplayServerManager (gap coverage)', () => {
 
             expect(caps['ms:edgeOptions']?.args).toEqual([
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -325,7 +319,6 @@ describe('DisplayServerManager (gap coverage)', () => {
             const electronOpts = (caps as Record<string, unknown>)['wdio:electronServiceOptions'] as { appArgs: string[] }
             expect(electronOpts.appArgs).toEqual([
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
         })
 
@@ -346,8 +339,108 @@ describe('DisplayServerManager (gap coverage)', () => {
             expect(b['goog:chromeOptions']?.args).toEqual([
                 '--disable-gpu',
                 '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
             ])
+        })
+
+        it('does nothing when the manager is disabled, even with WAYLAND_DISPLAY set', () => {
+            process.env.WAYLAND_DISPLAY = 'wayland-0'
+            try {
+                const mgr = new DisplayServerManager({ enabled: false })
+                const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
+
+                mgr.injectDisplayFlags(caps as never)
+
+                expect(caps['goog:chromeOptions']).toBeUndefined()
+            } finally {
+                delete process.env.WAYLAND_DISPLAY
+            }
+        })
+
+        it('leaves capabilities alone when DISPLAY and WAYLAND_DISPLAY are both set externally (desktop with XWayland)', () => {
+            process.env.DISPLAY = ':0'
+            process.env.WAYLAND_DISPLAY = 'wayland-0'
+            try {
+                const mgr = new DisplayServerManager()
+                const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
+
+                mgr.injectDisplayFlags(caps as never)
+
+                expect(caps['goog:chromeOptions']).toBeUndefined()
+            } finally {
+                delete process.env.DISPLAY
+                delete process.env.WAYLAND_DISPLAY
+            }
+        })
+
+        it.each([
+            ['a grid hostname', { hostname: 'selenium-grid.internal' }],
+            ['a custom port', { port: 4444 }],
+            ['cloud credentials', { user: 'me', key: 'secret' }],
+        ])('leaves capabilities alone when the config defines a remote driver via %s', async (_label, connection) => {
+            mockWayland.isAvailable.mockResolvedValue(true)
+            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
+            await mgr.init()
+
+            const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
+            mgr.injectDisplayFlags(caps as never, connection)
+
+            expect(caps['goog:chromeOptions']).toBeUndefined()
+        })
+
+        it('injects when the connection settings are the local defaults', async () => {
+            mockWayland.isAvailable.mockResolvedValue(true)
+            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
+            await mgr.init()
+
+            const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
+            mgr.injectDisplayFlags(caps as never, { hostname: 'localhost', protocol: 'http', path: '/' })
+
+            expect(caps['goog:chromeOptions']?.args).toEqual(['--ozone-platform=wayland'])
+        })
+
+        it.each([
+            ['Chrome', 'goog:chromeOptions'],
+            ['googlechrome', 'goog:chromeOptions'],
+            ['chromium', 'goog:chromeOptions'],
+            ['edge', 'ms:edgeOptions'],
+            ['MicrosoftEdge', 'ms:edgeOptions'],
+        ])('matches browserName %s regardless of case or alias', async (browserName, optionsKey) => {
+            mockWayland.isAvailable.mockResolvedValue(true)
+            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
+            await mgr.init()
+
+            const caps = { browserName } as WebdriverIO.Capabilities
+            mgr.injectDisplayFlags(caps as never)
+
+            const options = (caps as unknown as Record<string, { args?: string[] } | undefined>)[optionsKey]
+            expect(options?.args).toEqual(['--ozone-platform=wayland'])
+        })
+
+        it('skips malformed capability entries instead of throwing', async () => {
+            mockWayland.isAvailable.mockResolvedValue(true)
+            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
+            await mgr.init()
+
+            const valid = { browserName: 'chrome' } as WebdriverIO.Capabilities
+            const caps = ['chrome', null, undefined, 42, valid]
+
+            expect(() => mgr.injectDisplayFlags(caps as never)).not.toThrow()
+            expect(valid['goog:chromeOptions']?.args).toEqual(['--ozone-platform=wayland'])
+        })
+
+        it('skips multiremote entries whose value is not an object (e.g. an unset env var)', async () => {
+            mockWayland.isAvailable.mockResolvedValue(true)
+            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
+            await mgr.init()
+
+            const caps = {
+                'appium:app': undefined,
+                browserA: 'chrome',
+                browserB: { capabilities: { browserName: 'chrome' } as WebdriverIO.Capabilities },
+            }
+
+            expect(() => mgr.injectDisplayFlags(caps as never)).not.toThrow()
+            expect(caps.browserB.capabilities['goog:chromeOptions']?.args).toEqual(['--ozone-platform=wayland'])
         })
     })
 

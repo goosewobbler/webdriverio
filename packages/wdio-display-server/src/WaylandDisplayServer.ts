@@ -12,10 +12,7 @@ import { runDaemon } from './daemonProcess.js'
 
 // One source of truth: getChromeFlags() and DisplayServerManager's
 // externally-set-WAYLAND_DISPLAY fallback both use these and must not drift.
-export const WAYLAND_CHROME_FLAGS: string[] = [
-    '--ozone-platform=wayland',
-    '--enable-features=UseOzonePlatform',
-]
+export const WAYLAND_CHROME_FLAGS: string[] = ['--ozone-platform=wayland']
 
 export class WaylandDisplayServer implements DisplayServer {
     readonly name = 'wayland' as const

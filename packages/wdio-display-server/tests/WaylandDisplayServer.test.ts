@@ -64,12 +64,9 @@ describe('WaylandDisplayServer', () => {
     })
 
     describe('getChromeFlags', () => {
-        it('returns the Ozone Wayland flags', () => {
+        it('returns only the Ozone Wayland switch', () => {
             const server = new WaylandDisplayServer()
-            expect(server.getChromeFlags()).toEqual([
-                '--ozone-platform=wayland',
-                '--enable-features=UseOzonePlatform',
-            ])
+            expect(server.getChromeFlags()).toEqual(['--ozone-platform=wayland'])
         })
     })
 

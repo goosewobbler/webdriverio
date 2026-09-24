@@ -1,6 +1,7 @@
 import os from 'node:os'
 import logger from '@wdio/logger'
-import type { Capabilities } from '@wdio/types'
+import { definesRemoteDriver, isChrome, isEdge } from '@wdio/utils'
+import type { Capabilities, Options } from '@wdio/types'
 import type { DisplayServer, DisplayServerOptions } from './types.js'
 import { WaylandDisplayServer, WAYLAND_CHROME_FLAGS } from './WaylandDisplayServer.js'
 import { XvfbDisplayServer } from './XvfbDisplayServer.js'
@@ -11,6 +12,15 @@ import { executeWithRetry } from './utils.js'
 
 type CapsRoot = WebdriverIO.Capabilities | Record<string, WebdriverIO.Capabilities | { capabilities: WebdriverIO.Capabilities }>
 
+/** The connection settings that decide whether WebdriverIO drives a local browser or a remote one. */
+export type DisplayServerConnectionOptions = Pick<Options.WebDriver, 'user' | 'key' | 'protocol' | 'hostname' | 'port' | 'path'>
+
+// Capability entries can be malformed (a bare string, an unset env var as a
+// multiremote value); only plain objects are worth inspecting or mutating.
+function isCapabilityObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function isSingleCapability(caps: CapsRoot): caps is WebdriverIO.Capabilities {
     return Boolean(
         (caps as WebdriverIO.Capabilities)['goog:chromeOptions'] ||
@@ -18,10 +28,6 @@ function isSingleCapability(caps: CapsRoot): caps is WebdriverIO.Capabilities {
         (caps as WebdriverIO.Capabilities)['moz:firefoxOptions'] ||
         'browserName' in caps
     )
-}
-
-function isMultiRemoteCapability(caps: CapsRoot): caps is Record<string, WebdriverIO.Capabilities | { capabilities: WebdriverIO.Capabilities }> {
-    return !isSingleCapability(caps) && !Array.isArray(caps) && typeof caps === 'object' && caps !== null
 }
 
 function extractCapabilitiesFromBrowserConfig(
@@ -37,9 +43,6 @@ function forEachBrowserCapability(
     capabilities: CapsRoot | WebdriverIO.Config['capabilities'] | undefined,
     visit: (cap: WebdriverIO.Capabilities) => void
 ): void {
-    if (!capabilities) {
-        return
-    }
     // Explicit branch — Object.entries would otherwise walk the array as a multiremote map.
     if (Array.isArray(capabilities)) {
         for (const entry of capabilities) {
@@ -47,12 +50,19 @@ function forEachBrowserCapability(
         }
         return
     }
+    if (!isCapabilityObject(capabilities)) {
+        return
+    }
     const caps = capabilities as CapsRoot
     if (isSingleCapability(caps)) {
         visit(caps)
-    } else if (isMultiRemoteCapability(caps)) {
-        for (const [, browserConfig] of Object.entries(caps)) {
-            visit(extractCapabilitiesFromBrowserConfig(browserConfig))
+        return
+    }
+    // Multiremote map: { browserA: { capabilities } | capabilities, ... }
+    for (const browserConfig of Object.values(caps)) {
+        const cap = extractCapabilitiesFromBrowserConfig(browserConfig)
+        if (isCapabilityObject(cap)) {
+            visit(cap)
         }
     }
 }
@@ -221,12 +231,11 @@ export class DisplayServerManager {
         const electronOptions = (caps as Record<string, unknown>)['wdio:electronServiceOptions'] as { appArgs?: string[] } | undefined
 
         // Create options objects for bare caps like { browserName: 'chrome' }
-        if (!chromeOptions && (caps.browserName === 'chrome' || caps.browserName === 'chromium')) {
+        if (!chromeOptions && isChrome(caps.browserName)) {
             caps['goog:chromeOptions'] = { args: [] }
             chromeOptions = caps['goog:chromeOptions']
         }
-        // Selenium accepts both 'MicrosoftEdge' and 'msedge'.
-        if (!edgeOptions && (caps.browserName === 'MicrosoftEdge' || caps.browserName === 'msedge')) {
+        if (!edgeOptions && isEdge(caps.browserName)) {
             caps['ms:edgeOptions'] = { args: [] }
             edgeOptions = caps['ms:edgeOptions']
         }
@@ -310,18 +319,25 @@ export class DisplayServerManager {
         return this.#displayServer
     }
 
-    // When no daemon was started but WAYLAND_DISPLAY is set externally, Chrome still
-    // needs --ozone-platform=wayland so it doesn't fall back to a missing X11 server.
-    // No equivalent for an externally-set DISPLAY: Chromium defaults to X11 anyway.
-    injectDisplayFlags(capabilities: Capabilities.ResolvedTestrunnerCapabilities): void {
-        if (!capabilities) {
+    // Skipped when disabled or when `connection` targets a remote driver: that
+    // browser doesn't run on this host's display. Without a daemon, an external
+    // WAYLAND_DISPLAY (and no DISPLAY) still needs the wayland ozone flag.
+    injectDisplayFlags(
+        capabilities: Capabilities.ResolvedTestrunnerCapabilities,
+        connection?: DisplayServerConnectionOptions,
+    ): void {
+        if (!capabilities || !this.#enabled) {
+            return
+        }
+        if (connection && definesRemoteDriver(connection)) {
+            this.#log.debug('Remote driver configured; leaving capabilities untouched')
             return
         }
         if (this.#displayServer) {
             this.#injectDisplayServerFlags(capabilities, this.#displayServer.getChromeFlags())
             return
         }
-        if (process.env.WAYLAND_DISPLAY) {
+        if (process.env.WAYLAND_DISPLAY && !process.env.DISPLAY) {
             this.#injectDisplayServerFlags(capabilities, [...WAYLAND_CHROME_FLAGS])
         }
     }

@@ -215,10 +215,10 @@ DISPLAY=:99
 
 ## Chrome/Edge Wayland Support
 
-When Wayland is active, the package automatically injects Chrome flags:
+When Wayland is active, the package automatically injects the Chrome flag:
 
 ```bash
---ozone-platform=wayland --enable-features=UseOzonePlatform
+--ozone-platform=wayland
 ```
 
 This enables Chrome/Edge to run under Weston headless.
