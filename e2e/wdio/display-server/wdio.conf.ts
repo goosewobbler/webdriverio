@@ -7,6 +7,10 @@ export const config: WebdriverIO.Config = {
     specs: [
         path.join(__dirname, '*.e2e.ts')
     ],
+    // Needs the daemon; it runs under wdio.runner.conf.ts.
+    exclude: [
+        path.join(__dirname, 'runner.e2e.ts')
+    ],
 
     capabilities: [{
         browserName: 'chrome',

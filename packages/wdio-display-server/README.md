@@ -191,7 +191,7 @@ Automatically detected flags:
 ## Retry Mechanism
 
 Daemon startup is retried up to 3 times with progressive backoff
-(1000 ms × attempt) to absorb transient spawn/socket failures.
+(1000 ms × attempt) to absorb transient spawn or readiness failures.
 
 ## Environment Variables
 
@@ -202,16 +202,23 @@ When Wayland is active, the following environment variables are set:
 ```bash
 WAYLAND_DISPLAY=wayland-1
 XDG_RUNTIME_DIR=/tmp/wdio-wayland-{pid}
+GDK_BACKEND=wayland
 ELECTRON_OZONE_PLATFORM_HINT=wayland
 ```
 
 ### Xvfb
 
-When Xvfb is active:
+When Xvfb is active, the following environment variables are set:
 
 ```bash
-DISPLAY=:99
+DISPLAY=:0
+GDK_BACKEND=x11
+ELECTRON_OZONE_PLATFORM_HINT=x11
 ```
+
+The display number is not fixed: Xvfb claims the first free one at startup, so read it from `process.env.DISPLAY`.
+
+Xvfb creates its socket in `/tmp/.X11-unix`, so if that directory already exists it must be writable by the test user, as mode `1777` is. Otherwise Xvfb exits with `Failed to find a socket to listen on`.
 
 ## Chrome/Edge Wayland Support
 

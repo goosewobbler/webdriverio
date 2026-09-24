@@ -93,19 +93,21 @@ export class WaylandDisplayServer implements DisplayServer {
                 '--no-config', // keeps a user's weston.ini out of the test compositor
                 `--socket=${socketName}`,
             ],
-            socketPath,
+            ready: {
+                socketPath,
+                socketLabel: 'Wayland socket',
+                env: {
+                    WAYLAND_DISPLAY: socketName,
+                    XDG_RUNTIME_DIR: runtimeDir,
+                    // Pin GTK to our weston compositor so an inherited GDK_BACKEND
+                    // doesn't send GTK to a missing X11.
+                    GDK_BACKEND: 'wayland',
+                    ELECTRON_OZONE_PLATFORM_HINT: 'wayland',
+                },
+            },
             spawnEnv: { ...process.env, XDG_RUNTIME_DIR: runtimeDir },
             label: 'Weston',
-            socketLabel: 'Wayland socket',
             log: this.log,
-            env: {
-                WAYLAND_DISPLAY: socketName,
-                XDG_RUNTIME_DIR: runtimeDir,
-                // Pin GTK to our weston compositor so an inherited GDK_BACKEND
-                // doesn't send GTK to a missing X11.
-                GDK_BACKEND: 'wayland',
-                ELECTRON_OZONE_PLATFORM_HINT: 'wayland',
-            },
             cleanup: () => rm(runtimeDir, { recursive: true, force: true }).catch(() => {}),
             cleanupSync: () => {
                 try {
