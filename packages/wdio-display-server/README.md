@@ -200,11 +200,13 @@ Daemon startup is retried up to 3 times with progressive backoff
 When Wayland is active, the following environment variables are set:
 
 ```bash
-WAYLAND_DISPLAY=wayland-1
-XDG_RUNTIME_DIR=/tmp/wdio-wayland-{pid}
+WAYLAND_DISPLAY=wayland-0
+XDG_RUNTIME_DIR=/tmp/wdio-wayland-XXXXXX
 GDK_BACKEND=wayland
 ELECTRON_OZONE_PLATFORM_HINT=wayland
 ```
+
+`XDG_RUNTIME_DIR` is a fresh private directory under `/tmp` for each daemon.
 
 ### Xvfb
 

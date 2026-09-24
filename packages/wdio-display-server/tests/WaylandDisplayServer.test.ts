@@ -6,7 +6,7 @@ import { arrangeSpawn, queuePackageManagerDetection, runAsRoot } from './helpers
 const mockExecAsync = vi.hoisted(() => vi.fn())
 const mockSpawn = vi.hoisted(() => vi.fn())
 const mockAccess = vi.hoisted(() => vi.fn())
-const mockMkdir = vi.hoisted(() => vi.fn())
+const mockMkdtemp = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({
@@ -27,7 +27,7 @@ vi.mock('node:fs', () => ({
 
 vi.mock('node:fs/promises', () => ({
     access: mockAccess,
-    mkdir: mockMkdir,
+    mkdtemp: mockMkdtemp,
     rm: mockRm,
 }))
 
@@ -35,10 +35,12 @@ vi.mock('@wdio/logger', () => import(path.join(process.cwd(), '__mocks__', '@wdi
 
 const { WaylandDisplayServer } = await import('../src/WaylandDisplayServer.js')
 
+const RUNTIME_DIR = '/tmp/wdio-wayland-abc123'
+
 describe('WaylandDisplayServer', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        mockMkdir.mockResolvedValue(undefined)
+        mockMkdtemp.mockResolvedValue(RUNTIME_DIR)
         mockRm.mockResolvedValue(undefined)
     })
 
@@ -154,10 +156,7 @@ describe('WaylandDisplayServer', () => {
             const server = new WaylandDisplayServer()
             const daemon = await server.startDaemon({ width: 1280, height: 720 })
 
-            expect(mockMkdir).toHaveBeenCalledWith(
-                expect.stringMatching(/^\/tmp\/wdio-wayland-\d+-\d+$/),
-                { recursive: true, mode: 0o700 }
-            )
+            expect(mockMkdtemp).toHaveBeenCalledWith('/tmp/wdio-wayland-')
             expect(mockSpawn).toHaveBeenCalledWith(
                 'weston',
                 expect.arrayContaining([
@@ -167,18 +166,16 @@ describe('WaylandDisplayServer', () => {
                     '--renderer=pixman',
                     '--idle-time=0',
                     '--no-config',
-                    expect.stringMatching(/^--socket=wayland-\d+$/),
+                    '--socket=wayland-0',
                 ]),
                 expect.objectContaining({
                     stdio: ['ignore', 'ignore', 'pipe'],
-                    env: expect.objectContaining({
-                        XDG_RUNTIME_DIR: expect.stringMatching(/^\/tmp\/wdio-wayland-/),
-                    }),
+                    env: expect.objectContaining({ XDG_RUNTIME_DIR: RUNTIME_DIR }),
                 })
             )
 
-            expect(daemon.env.WAYLAND_DISPLAY).toMatch(/^wayland-\d+$/)
-            expect(daemon.env.XDG_RUNTIME_DIR).toMatch(/^\/tmp\/wdio-wayland-/)
+            expect(daemon.env.WAYLAND_DISPLAY).toBe('wayland-0')
+            expect(daemon.env.XDG_RUNTIME_DIR).toBe(RUNTIME_DIR)
             expect(daemon.env.GDK_BACKEND).toBe('wayland')
             expect(daemon.env.ELECTRON_OZONE_PLATFORM_HINT).toBe('wayland')
         })
@@ -228,7 +225,7 @@ describe('WaylandDisplayServer', () => {
             )
         })
 
-        it('rejects when weston exits before the socket appears', async () => {
+        it('rejects and removes its runtime dir when weston exits before the socket appears', async () => {
             const proc = arrangeSpawn(mockSpawn, undefined, { exited: true })
             mockAccess.mockRejectedValue(new Error('ENOENT'))
 
@@ -240,6 +237,7 @@ describe('WaylandDisplayServer', () => {
             proc.emit('exit', 1, null)
 
             await expect(startPromise).rejects.toThrow(/Weston process exited unexpectedly/)
+            expect(mockRm).toHaveBeenCalledWith(RUNTIME_DIR, { recursive: true, force: true })
         })
 
         describe('daemon.stop()', () => {
@@ -256,10 +254,7 @@ describe('WaylandDisplayServer', () => {
                 await stopPromise
 
                 expect(proc.kill).toHaveBeenCalledWith('SIGTERM')
-                expect(mockRm).toHaveBeenCalledWith(
-                    expect.stringMatching(/^\/tmp\/wdio-wayland-/),
-                    { recursive: true, force: true }
-                )
+                expect(mockRm).toHaveBeenCalledWith(RUNTIME_DIR, { recursive: true, force: true })
 
                 mockRm.mockClear()
                 proc.kill.mockClear()
