@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { createInterface } from 'node:readline'
 import type { Readable } from 'node:stream'
@@ -25,7 +25,7 @@ interface RunDaemonOptions {
     /** For the spawned process; defaults to inheriting process.env. */
     spawnEnv?: NodeJS.ProcessEnv
     timeoutMs?: number
-    /** Runs after the process exits, in stop() and on startup failure. */
+    /** Runs after the process exits or fails to spawn, in stop() and on startup failure. */
     cleanup?: () => void | Promise<void>
     /** Best-effort synchronous teardown for Node's 'exit' handler. */
     cleanupSync?: () => void
@@ -68,7 +68,18 @@ export async function runDaemon({
     if (displayFd) {
         stdio.push(...new Array<'ignore'>(DISPLAY_FD - stdio.length).fill('ignore'), 'pipe')
     }
-    const proc = spawn(command, args, { stdio, ...(spawnEnv ? { env: spawnEnv } : {}) })
+    let proc: ChildProcess
+    try {
+        proc = spawn(command, args, { stdio, ...(spawnEnv ? { env: spawnEnv } : {}) })
+    } catch (err) {
+        // Errnos like E2BIG throw synchronously instead of emitting 'error'.
+        try {
+            await cleanup?.()
+        } catch (cleanupErr) {
+            log.debug(`${label} cleanup after failed spawn: ${(cleanupErr as Error).message}`)
+        }
+        throw err
+    }
 
     // stopSync() still runs during an in-flight stop(), so an exit mid-stop doesn't orphan the child.
     let syncDone = false
@@ -99,15 +110,20 @@ export async function runDaemon({
     proc.stderr?.on('data', (chunk) => {
         stderr = (stderr + chunk.toString()).slice(-4096)
     })
+    proc.stderr?.on('error', (err) => log.debug(`${label} stderr error: ${err.message}`))
 
     let rejectExit!: (err: Error) => void
     const exitPromise = new Promise<never>((_, reject) => { rejectExit = reject })
-    const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+    // 'close', not 'exit': it fires only once stderr has drained, so the tail is complete.
+    const onClose = (code: number | null, signal: NodeJS.Signals | null) =>
         rejectExit(new Error(`${label} process exited unexpectedly (code=${code}, signal=${signal})${stderr ? `\n${stderr.trim()}` : ''}`))
-    const onError = (err: Error) =>
+    // Stays attached for the daemon's life, so a kill error during teardown can't throw.
+    const onError = (err: Error) => {
+        log.debug(`${label} process error: ${err.message}`)
         rejectExit(new Error(`${label} process error: ${err.message}`))
-    proc.once('exit', onExit)
-    proc.once('error', onError)
+    }
+    proc.once('close', onClose)
+    proc.on('error', onError)
 
     // A spawn that fails with EMFILE or ENFILE has no stdio; its 'error' event rejects exitPromise.
     const displayStream = displayFd ? proc.stdio?.[DISPLAY_FD] as Readable | undefined : undefined
@@ -168,17 +184,17 @@ export async function runDaemon({
         } else {
             readiness = exitPromise
         }
-        env = await Promise.race([readiness, exitPromise])
+        env = await Promise.race([readiness, exitPromise]).finally(() => readyWait.abort())
     } catch (err) {
-        proc.removeListener('exit', onExit)
-        proc.removeListener('error', onError)
-        await teardown()
+        try {
+            await teardown()
+        } catch (teardownErr) {
+            log.debug(`${label} teardown after failed start: ${(teardownErr as Error).message}`)
+        }
         throw err
     } finally {
-        readyWait.abort()
+        proc.removeListener('close', onClose)
     }
-    proc.removeListener('exit', onExit)
-    proc.removeListener('error', onError)
 
     let stopPromise: Promise<void> | null = null
     const stop = (): Promise<void> => {

@@ -228,7 +228,7 @@ describe('WaylandDisplayServer', () => {
         })
 
         it('rejects and removes its runtime dir when weston exits before the socket appears', async () => {
-            const proc = arrangeSpawn(mockSpawn, undefined, { exited: true })
+            const proc = arrangeSpawn(mockSpawn)
             mockAccess.mockRejectedValue(new Error('ENOENT'))
 
             const server = new WaylandDisplayServer()
