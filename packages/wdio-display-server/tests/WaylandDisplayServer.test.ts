@@ -164,7 +164,9 @@ describe('WaylandDisplayServer', () => {
                     '--backend=headless',
                     '--width=1280',
                     '--height=720',
-                    '--use-pixman',
+                    '--renderer=pixman',
+                    '--idle-time=0',
+                    '--no-config',
                     expect.stringMatching(/^--socket=wayland-\d+$/),
                 ]),
                 expect.objectContaining({
@@ -179,6 +181,38 @@ describe('WaylandDisplayServer', () => {
             expect(daemon.env.XDG_RUNTIME_DIR).toMatch(/^\/tmp\/wdio-wayland-/)
             expect(daemon.env.GDK_BACKEND).toBe('wayland')
             expect(daemon.env.ELECTRON_OZONE_PLATFORM_HINT).toBe('wayland')
+        })
+
+        it('uses the pre-12 backend and renderer spellings when weston --version reports 10', async () => {
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'weston 10.0.1\n', stderr: '' })
+            arrangeSpawn(mockSpawn, mockAccess)
+
+            await new WaylandDisplayServer().startDaemon()
+
+            const args = mockSpawn.mock.calls[0][1] as string[]
+            expect(args).toContain('--backend=headless-backend.so')
+            expect(args).toContain('--use-pixman')
+            expect(args).not.toContain('--renderer=pixman')
+        })
+
+        it('uses the current spellings from Weston 12 on', async () => {
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'weston 12.0.5\n', stderr: '' })
+            arrangeSpawn(mockSpawn, mockAccess)
+
+            await new WaylandDisplayServer().startDaemon()
+
+            const args = mockSpawn.mock.calls[0][1] as string[]
+            expect(args).toContain('--backend=headless')
+            expect(args).toContain('--renderer=pixman')
+        })
+
+        it('assumes a current Weston when the version cannot be read', async () => {
+            mockExecAsync.mockRejectedValueOnce(new Error('spawn weston ENOENT'))
+            arrangeSpawn(mockSpawn, mockAccess)
+
+            await new WaylandDisplayServer().startDaemon()
+
+            expect(mockSpawn.mock.calls[0][1]).toContain('--renderer=pixman')
         })
 
         it('uses default dimensions when options omitted', async () => {

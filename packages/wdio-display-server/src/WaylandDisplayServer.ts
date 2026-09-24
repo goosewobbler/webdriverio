@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
+import { promisify } from 'node:util'
 import logger from '@wdio/logger'
 import type {
     DisplayDaemon,
@@ -10,6 +12,8 @@ import type {
 import { commandExists, installViaPackageManager, resolveDaemonDimensions } from './utils.js'
 import { runDaemon } from './daemonProcess.js'
 
+const execFileAsync = promisify(execFile)
+
 // One source of truth: getChromeFlags() and DisplayServerManager's
 // externally-set-WAYLAND_DISPLAY fallback both use these and must not drift.
 export const WAYLAND_CHROME_FLAGS: string[] = ['--ozone-platform=wayland']
@@ -18,6 +22,7 @@ export class WaylandDisplayServer implements DisplayServer {
     readonly name = 'wayland' as const
     private log = logger('@wdio/display-server:wayland')
     private static daemonCounter = 0
+    private majorVersion?: number
 
     async isAvailable(): Promise<boolean> {
         if (await commandExists('weston')) {
@@ -49,8 +54,25 @@ export class WaylandDisplayServer implements DisplayServer {
         return [...WAYLAND_CHROME_FLAGS]
     }
 
+    /** Major version from `weston --version` ("weston 13.0.1"); unreadable counts as current. */
+    private async westonMajor(): Promise<number> {
+        if (this.majorVersion === undefined) {
+            try {
+                const { stdout } = await execFileAsync('weston', ['--version'], { timeout: 5000 })
+                const major = Number(/weston\s+(\d+)/.exec(stdout)?.[1])
+                this.majorVersion = Number.isFinite(major) ? major : Infinity
+            } catch {
+                this.majorVersion = Infinity
+            }
+        }
+        return this.majorVersion
+    }
+
     async startDaemon(options?: DisplayDaemonOptions): Promise<DisplayDaemon> {
         const { width, height } = resolveDaemonDimensions(options)
+        // Weston 12 renamed the backend and renderer switches. Debian 12, the base of
+        // the default node:22 image, still ships Weston 10, so we support the legacy switches.
+        const legacy = (await this.westonMajor()) < 12
 
         const id = ++WaylandDisplayServer.daemonCounter
         const runtimeDir = `/tmp/wdio-wayland-${process.pid}-${id}`
@@ -62,10 +84,15 @@ export class WaylandDisplayServer implements DisplayServer {
 
         return runDaemon({
             command: 'weston',
-            // --use-pixman forces software rendering on GPU-less CI containers. Deprecated
-            // for --renderer=pixman in weston 10+, but some distros in the e2e matrix ship
-            // weston < 10 without --renderer, so the portable flag stays.
-            args: ['--backend=headless', `--width=${width}`, `--height=${height}`, '--use-pixman', `--socket=${socketName}`],
+            args: [
+                legacy ? '--backend=headless-backend.so' : '--backend=headless',
+                `--width=${width}`,
+                `--height=${height}`,
+                legacy ? '--use-pixman' : '--renderer=pixman', // software rendering for GPU-less CI
+                '--idle-time=0', // Weston otherwise sleeps after 300s without input
+                '--no-config', // keeps a user's weston.ini out of the test compositor
+                `--socket=${socketName}`,
+            ],
             socketPath,
             spawnEnv: { ...process.env, XDG_RUNTIME_DIR: runtimeDir },
             label: 'Weston',
