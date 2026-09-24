@@ -13,6 +13,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+// The version probe runs `weston --version` before spawning the daemon.
+if (process.argv.includes('--version')) {
+    process.stdout.write('weston 13.0.0\n')
+    process.exit(0)
+}
+
 const mode = process.env.WDIO_STUB_MODE || 'ready'
 const socketArg = process.argv.find((arg) => arg.startsWith('--socket='))
 const socketName = socketArg?.slice('--socket='.length)
