@@ -922,6 +922,9 @@ importers:
       '@wdio/logger':
         specifier: workspace:*
         version: link:../wdio-logger
+      '@wdio/utils':
+        specifier: workspace:*
+        version: link:../wdio-utils
     devDependencies:
       '@types/node':
         specifier: ^22.20.4
@@ -1086,6 +1089,9 @@ importers:
       '@wdio/types':
         specifier: workspace:*
         version: link:../wdio-types
+      '@wdio/utils':
+        specifier: workspace:*
+        version: link:../wdio-utils
       exit-hook:
         specifier: ^4.0.0
         version: 4.0.0

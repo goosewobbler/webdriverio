@@ -1,4 +1,5 @@
 import logger from '@wdio/logger'
+import { definesRemoteDriver } from '@wdio/utils'
 import { WritableStreamBuffer } from 'stream-buffers'
 import {
     DisplayServerManager,
@@ -58,9 +59,14 @@ export default class LocalRunner {
     }
 
     async run({ command, args, ...workerOptions }: RunArgs) {
-        // Per-worker `--ozone-platform=...` injection (env vars were set in
-        // initialize()).
-        this.displayServerManager.injectDisplayFlags(workerOptions.caps)
+        // Per-worker `--ozone-platform=...` injection. A remote driver's browser
+        // doesn't run on this display; like the worker, let a capability's
+        // connection settings override the config's.
+        if (definesRemoteDriver({ ...this.config, ...workerOptions.caps })) {
+            log.debug(`Remote driver configured for worker ${workerOptions.cid}; leaving capabilities untouched`)
+        } else {
+            this.displayServerManager.injectDisplayFlags(workerOptions.caps)
+        }
 
         /**
          * adjust max listeners on stdout/stderr when creating listeners

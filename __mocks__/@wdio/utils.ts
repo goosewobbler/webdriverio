@@ -4,7 +4,10 @@ import {
     isFunctionAsync as isFnAsync,
     getArgumentType as getArgumentTypeOrig,
     isValidParameter as isValidParameterOrig,
-    commandCallStructure as commandCallStructureOrig
+    commandCallStructure as commandCallStructureOrig,
+    definesRemoteDriver as definesRemoteDriverOrig,
+    isChrome as isChromeOrig,
+    isEdge as isEdgeOrig,
 } from '../../packages/wdio-utils/src/utils.js'
 import webdriverMonadOrig from '../../packages/wdio-utils/src/monad.js'
 import {
@@ -80,6 +83,9 @@ export const initializeLauncherService = vi.fn().mockReturnValue({
 })
 export const isValidParameter = isValidParameterOrig
 export const commandCallStructure = commandCallStructureOrig
+export const definesRemoteDriver = definesRemoteDriverOrig
+export const isChrome = isChromeOrig
+export const isEdge = isEdgeOrig
 export const isFunctionAsync = isFnAsync
 export const safeRequire = vi.fn().mockReturnValue(() => {})
 export const webdriverMonad = webdriverMonadOrig

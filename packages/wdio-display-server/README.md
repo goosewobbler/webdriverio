@@ -223,6 +223,11 @@ When Wayland is active, the package automatically injects the Chrome flag:
 
 This enables Chrome/Edge to run under Weston headless.
 
+The flag is only injected for sessions WebdriverIO drives itself. If your config
+points `hostname`/`port` at a driver you start on the same machine, add
+`--ozone-platform=wayland` to your browser args; grid and cloud sessions need
+nothing, since their browsers run on the remote host's own display.
+
 ## WebDriverIO Configuration
 
 ### Minimal Configuration

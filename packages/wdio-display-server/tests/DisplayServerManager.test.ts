@@ -373,32 +373,6 @@ describe('DisplayServerManager (gap coverage)', () => {
         })
 
         it.each([
-            ['a grid hostname', { hostname: 'selenium-grid.internal' }],
-            ['a custom port', { port: 4444 }],
-            ['cloud credentials', { user: 'me', key: 'secret' }],
-        ])('leaves capabilities alone when the config defines a remote driver via %s', async (_label, connection) => {
-            mockWayland.isAvailable.mockResolvedValue(true)
-            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
-            await mgr.init()
-
-            const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
-            mgr.injectDisplayFlags(caps as never, connection)
-
-            expect(caps['goog:chromeOptions']).toBeUndefined()
-        })
-
-        it('injects when the connection settings are the local defaults', async () => {
-            mockWayland.isAvailable.mockResolvedValue(true)
-            const mgr = new DisplayServerManager({ displayServer: 'wayland' })
-            await mgr.init()
-
-            const caps = { browserName: 'chrome' } as WebdriverIO.Capabilities
-            mgr.injectDisplayFlags(caps as never, { hostname: 'localhost', protocol: 'http', path: '/' })
-
-            expect(caps['goog:chromeOptions']?.args).toEqual(['--ozone-platform=wayland'])
-        })
-
-        it.each([
             ['Chrome', 'goog:chromeOptions'],
             ['googlechrome', 'goog:chromeOptions'],
             ['chromium', 'goog:chromeOptions'],

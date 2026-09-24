@@ -1,7 +1,7 @@
 import os from 'node:os'
 import logger from '@wdio/logger'
-import { definesRemoteDriver, isChrome, isEdge } from '@wdio/utils'
-import type { Capabilities, Options } from '@wdio/types'
+import { isChrome, isEdge } from '@wdio/utils'
+import type { Capabilities } from '@wdio/types'
 import type { DisplayServer, DisplayServerOptions } from './types.js'
 import { WaylandDisplayServer, WAYLAND_CHROME_FLAGS } from './WaylandDisplayServer.js'
 import { XvfbDisplayServer } from './XvfbDisplayServer.js'
@@ -11,9 +11,6 @@ import { executeWithRetry } from './utils.js'
 // ({ 'goog:chromeOptions' }), parallel (array), and multiremote ({ browserA: {...} }).
 
 type CapsRoot = WebdriverIO.Capabilities | Record<string, WebdriverIO.Capabilities | { capabilities: WebdriverIO.Capabilities }>
-
-/** The connection settings that decide whether WebdriverIO drives a local browser or a remote one. */
-export type DisplayServerConnectionOptions = Pick<Options.WebDriver, 'user' | 'key' | 'protocol' | 'hostname' | 'port' | 'path'>
 
 // Capability entries can be malformed (a bare string, an unset env var as a
 // multiremote value); only plain objects are worth inspecting or mutating.
@@ -319,18 +316,10 @@ export class DisplayServerManager {
         return this.#displayServer
     }
 
-    // Skipped when disabled or when `connection` targets a remote driver: that
-    // browser doesn't run on this host's display. Without a daemon, an external
-    // WAYLAND_DISPLAY (and no DISPLAY) still needs the wayland ozone flag.
-    injectDisplayFlags(
-        capabilities: Capabilities.ResolvedTestrunnerCapabilities,
-        connection?: DisplayServerConnectionOptions,
-    ): void {
+    // Without a daemon, an external WAYLAND_DISPLAY (and no DISPLAY) still needs
+    // the wayland ozone flag so Chrome doesn't fall back to a missing X11 server.
+    injectDisplayFlags(capabilities: Capabilities.ResolvedTestrunnerCapabilities): void {
         if (!capabilities || !this.#enabled) {
-            return
-        }
-        if (connection && definesRemoteDriver(connection)) {
-            this.#log.debug('Remote driver configured; leaving capabilities untouched')
             return
         }
         if (this.#displayServer) {

@@ -8,6 +8,7 @@ import {
     commandCallStructure, isValidParameter, getArgumentType, safeImport,
     isFunctionAsync, transformCommandLogResult, sleep, isAppiumCapability,
     userImport, getBrowserObject, enableFileLogging,
+    definesRemoteDriver, isChrome, isEdge,
 } from './utils.js'
 import { wrapCommand, executeHooksWithArgs, executeAsync } from './shim.js'
 import * as asyncIterators from './pIteration.js'
@@ -34,6 +35,13 @@ export {
     getBrowserObject,
     enableFileLogging,
     asyncIterators,
+
+    /**
+     * capability / connection helpers
+     */
+    definesRemoteDriver,
+    isChrome,
+    isEdge,
 
     /**
      * runner shim

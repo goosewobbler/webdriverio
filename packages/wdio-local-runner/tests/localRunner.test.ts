@@ -336,44 +336,86 @@ test('stops the daemon during shutdown() when one was started in initialize()', 
     expect(stopSpy).toHaveBeenCalledTimes(1)
 })
 
-test('injects display flags into every spawned worker (independent of daemon state)', async () => {
-    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as any)
-
+function stubInjection (runner: LocalRunner) {
     const mockInject = vi.fn()
-    runner['displayServerManager'] = {
-        init: vi.fn().mockResolvedValue(true),
-        injectDisplayFlags: mockInject,
-        shouldRun: vi.fn().mockReturnValue(true),
-        getDisplayServer: vi.fn().mockReturnValue(null),
-    } as any
+    runner['displayServerManager'] = { injectDisplayFlags: mockInject } as unknown as DisplayServerModule.DisplayServerManager
+    return mockInject
+}
 
-    const caps1 = { browserName: 'chrome' }
-    const caps2 = { browserName: 'firefox' }
-
-    await runner.run({
-        cid: '0-a',
+function runPayload (caps: WebdriverIO.Capabilities, cid = '0-a') {
+    return {
+        cid,
         command: 'run',
         configFile: '/path/to/wdio.conf.js',
         args: {},
-        caps: caps1 as any,
+        caps,
         specs: ['/foo/a.test.js'],
         execArgv: [],
         retries: 0,
-    })
-    await runner.run({
-        cid: '0-b',
-        command: 'run',
-        configFile: '/path/to/wdio.conf.js',
-        args: {},
-        caps: caps2 as any,
-        specs: ['/foo/b.test.js'],
-        execArgv: [],
-        retries: 0,
-    })
+    }
+}
+
+test('injects display flags into every spawned worker (independent of daemon state)', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+    const caps1 = { browserName: 'chrome' }
+    const caps2 = { browserName: 'firefox' }
+
+    await runner.run(runPayload(caps1, '0-a'))
+    await runner.run(runPayload(caps2, '0-b'))
 
     // injectDisplayFlags fires per worker so Chrome/Edge get
     // --ozone-platform=wayland on every spec when Wayland is in play.
     expect(mockInject).toHaveBeenCalledTimes(2)
     expect(mockInject).toHaveBeenNthCalledWith(1, caps1)
     expect(mockInject).toHaveBeenNthCalledWith(2, caps2)
+})
+
+test.each([
+    ['a grid hostname', { hostname: 'selenium-grid.internal' }],
+    ['a custom port', { port: 4444 }],
+    ['cloud credentials', { user: 'me', key: 'secret' }],
+])('skips display flag injection when the config defines a remote driver via %s', async (_label, connection) => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true, ...connection } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+
+    await runner.run(runPayload({ browserName: 'chrome' }))
+
+    // The browser starts on the grid or cloud host, not on this display.
+    expect(mockInject).not.toHaveBeenCalled()
+})
+
+test('skips display flag injection when the capability itself targets a remote driver', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+
+    await runner.run(runPayload({ browserName: 'chrome', hostname: 'selenium-grid.internal', port: 4444 }))
+
+    expect(mockInject).not.toHaveBeenCalled()
+})
+
+test('still injects display flags when the config spells out the local defaults', async () => {
+    const runner = new LocalRunner({} as never, {
+        displayServerEnabled: true,
+        hostname: 'localhost',
+        protocol: 'http',
+        path: '/',
+    } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+    const caps = { browserName: 'chrome' }
+
+    await runner.run(runPayload(caps))
+
+    expect(mockInject).toHaveBeenCalledTimes(1)
+    expect(mockInject).toHaveBeenCalledWith(caps)
+})
+
+test('lets a capability override a remote config back to local, as the worker does', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true, hostname: 'grid.internal' } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+    const caps = { browserName: 'chrome', hostname: 'localhost' }
+
+    await runner.run(runPayload(caps))
+
+    expect(mockInject).toHaveBeenCalledWith(caps)
 })
