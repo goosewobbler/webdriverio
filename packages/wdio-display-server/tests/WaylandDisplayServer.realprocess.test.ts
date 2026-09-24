@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
-import { access } from 'node:fs/promises'
+import { access, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -44,9 +44,10 @@ describe.skipIf(process.platform === 'win32')('WaylandDisplayServer (real proces
 
         daemon = await new WaylandDisplayServer().startDaemon({ width: 100, height: 100 })
 
-        expect(daemon.env.WAYLAND_DISPLAY).toMatch(/^wayland-\d+$/)
+        expect(daemon.env.WAYLAND_DISPLAY).toBe('wayland-0')
         expect(daemon.env.ELECTRON_OZONE_PLATFORM_HINT).toBe('wayland')
         const runtimeDir = daemon.env.XDG_RUNTIME_DIR
+        expect((await stat(runtimeDir)).mode & 0o777).toBe(0o700)
         expect(await exists(path.join(runtimeDir, daemon.env.WAYLAND_DISPLAY))).toBe(true)
 
         await daemon.stop()

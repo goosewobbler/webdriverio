@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { rmSync } from 'node:fs'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
+import path from 'node:path'
 import { promisify } from 'node:util'
 import logger from '@wdio/logger'
 import type {
@@ -24,7 +25,6 @@ export const WAYLAND_CHROME_FLAGS: string[] = [
 export class WaylandDisplayServer implements DisplayServer {
     readonly name = 'wayland' as const
     private log = logger('@wdio/display-server:wayland')
-    private static daemonCounter = 0
     private majorVersion?: number
 
     async isAvailable(): Promise<boolean> {
@@ -77,12 +77,12 @@ export class WaylandDisplayServer implements DisplayServer {
         // the default node:22 image, still ships Weston 10, so we support the legacy switches.
         const legacy = (await this.westonMajor()) < 12
 
-        const id = ++WaylandDisplayServer.daemonCounter
-        const runtimeDir = `/tmp/wdio-wayland-${process.pid}-${id}`
-        const socketName = `wayland-${id}`
-        const socketPath = `${runtimeDir}/${socketName}`
+        // A fresh 0700 directory per daemon, so a leftover from a killed run is never reused.
+        // Rooted at /tmp, not TMPDIR, to keep the socket path under the 107-byte Unix limit.
+        const runtimeDir = await mkdtemp('/tmp/wdio-wayland-')
+        const socketName = 'wayland-0'
+        const socketPath = path.join(runtimeDir, socketName)
 
-        await mkdir(runtimeDir, { recursive: true, mode: 0o700 })
         this.log.info(`Starting Weston daemon on ${socketName} (${width}x${height}) in ${runtimeDir}`)
 
         return runDaemon({
