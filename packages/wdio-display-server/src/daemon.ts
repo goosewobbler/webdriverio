@@ -67,7 +67,7 @@ export async function startDisplayDaemonFromConfig(
     Object.assign(process.env, daemon.env)
     log.info(`Daemon ready (${manager.getDisplayServer()?.name}); env: ${JSON.stringify(daemon.env)}`)
 
-    // The daemon is killed on process exit by runDaemon; callers that handle signals call stop().
+    // Not called on signal exits; runDaemon kills the daemon on process exit instead.
     let stopPromise: Promise<void> | null = null
     const stop = (): Promise<void> => {
         stopPromise ??= (async () => {

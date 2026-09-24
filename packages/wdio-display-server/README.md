@@ -28,8 +28,8 @@ npm install @wdio/display-server
 ordering is the key property: by the time any service (e.g.
 `@wdio/tauri-service`) forks its WebDriver driver, `DISPLAY` and/or
 `WAYLAND_DISPLAY` are already on `process.env`, and the driver inherits them
-via normal env propagation. The daemon outlives all workers and is stopped on
-`runner.shutdown()`.
+via normal env propagation. The daemon outlives all workers and is stopped after
+the `onComplete` hook, so services can still use the display while they tear down.
 
 To opt in, set `displayServer` at the **config root** — no service registration
 needed:

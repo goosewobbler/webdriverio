@@ -333,11 +333,12 @@ test('shuts down cleanly when startDisplayDaemonFromConfig returns null', async 
     await runner.initialize()
 
     expect(displayServer.startDisplayDaemonFromConfig).toHaveBeenCalledTimes(1)
-    // No daemon was started, so shutdown shouldn't try to stop anything.
+    // No daemon was started, so neither teardown step has anything to stop.
     await runner.shutdown()
+    await runner.dispose()
 })
 
-test('stops the daemon during shutdown() when one was started in initialize()', async () => {
+test('keeps the daemon through shutdown() and stops it in dispose()', async () => {
     const displayServer = await import('@wdio/display-server')
     const stopSpy = vi.fn().mockResolvedValue(undefined)
     vi.mocked(displayServer.startDisplayDaemonFromConfig).mockResolvedValueOnce({ stop: stopSpy })
@@ -346,7 +347,34 @@ test('stops the daemon during shutdown() when one was started in initialize()', 
     await runner.initialize()
     await runner.shutdown()
 
+    // onComplete runs between the two; a driver started in onPrepare still needs the display.
+    expect(stopSpy).not.toHaveBeenCalled()
+
+    await runner.dispose()
+
     expect(stopSpy).toHaveBeenCalledTimes(1)
+})
+
+test('dispose() waits for the daemon to stop', async () => {
+    const displayServer = await import('@wdio/display-server')
+    let finishStop!: () => void
+    const stop = vi.fn(() => new Promise<void>((resolve) => {
+        finishStop = resolve
+    }))
+    vi.mocked(displayServer.startDisplayDaemonFromConfig).mockResolvedValueOnce({ stop })
+
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as any)
+    await runner.initialize()
+    let disposed = false
+    const disposing = runner.dispose().then(() => {
+        disposed = true
+    })
+    await new Promise((r) => setImmediate(r))
+
+    expect(disposed).toBe(false)
+    finishStop()
+    await disposing
+    expect(disposed).toBe(true)
 })
 
 function stubInjection (runner: LocalRunner) {
