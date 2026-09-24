@@ -55,7 +55,6 @@ vi.mock('@wdio/display-server', async () => {
     return {
         ...actual,
         DisplayServerManager: vi.fn().mockImplementation(() => ({
-            init: vi.fn().mockResolvedValue(true),
             shouldRun: vi.fn().mockReturnValue(true),
             injectDisplayFlags: vi.fn(),
             getDisplayServer: vi.fn().mockReturnValue(null),

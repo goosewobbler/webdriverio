@@ -43,7 +43,12 @@ export default class LocalRunner {
      * `onPrepare` — inherit the display. Runs before any service `onPrepare`.
      */
     async initialize() {
-        this.daemon = await startDisplayDaemonFromConfig(this.config, this.displayServerManager)
+        try {
+            this.daemon = await startDisplayDaemonFromConfig(this.config, this.displayServerManager)
+        } catch (error) {
+            log.warn('Failed to start a display server; continuing without a virtual display:', error)
+            return
+        }
         if (this.daemon) {
             log.info('Display server daemon initialized for this run')
         }

@@ -40,7 +40,6 @@ vi.mock('@wdio/display-server', async () => {
     return {
         ...actual,
         DisplayServerManager: vi.fn().mockImplementation(() => ({
-            init: vi.fn().mockResolvedValue(true),
             shouldRun: vi.fn().mockReturnValue(true),
             injectDisplayFlags: vi.fn(),
             getDisplayServer: vi.fn().mockReturnValue(null),
@@ -313,6 +312,17 @@ test('starts a display-server daemon during initialize() when one is needed', as
     // The runner's own manager, so the one that later injects flags knows the active server.
     expect(displayServer.startDisplayDaemonFromConfig).toHaveBeenCalledTimes(1)
     expect(displayServer.startDisplayDaemonFromConfig).toHaveBeenCalledWith(config, runner['displayServerManager'])
+})
+
+test('continues without a display when starting the daemon throws', async () => {
+    const displayServer = await import('@wdio/display-server')
+    vi.mocked(displayServer.startDisplayDaemonFromConfig).mockRejectedValueOnce(new Error('mkdtemp ENOSPC'))
+
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+
+    await expect(runner.initialize()).resolves.toBeUndefined()
+    expect(runner['daemon']).toBeNull()
+    await runner.shutdown()
 })
 
 test('shuts down cleanly when startDisplayDaemonFromConfig returns null', async () => {

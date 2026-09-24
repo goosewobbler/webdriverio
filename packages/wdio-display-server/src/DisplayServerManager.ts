@@ -2,10 +2,9 @@ import os from 'node:os'
 import logger from '@wdio/logger'
 import { isChrome, isEdge } from '@wdio/utils'
 import type { Capabilities } from '@wdio/types'
-import type { DisplayServer, DisplayServerOptions } from './types.js'
+import type { DisplayDaemon, DisplayDaemonOptions, DisplayServer, DisplayServerOptions } from './types.js'
 import { WaylandDisplayServer, WAYLAND_CHROME_FLAGS } from './WaylandDisplayServer.js'
 import { XvfbDisplayServer } from './XvfbDisplayServer.js'
-import { executeWithRetry } from './utils.js'
 
 // A worker's capabilities come in three shapes: single ({ browserName }), vendor-keyed
 // ({ 'goog:chromeOptions' }), and multiremote ({ browserA: {...} }).
@@ -64,10 +63,6 @@ export function optionsFromConfig(config: WebdriverIO.Config): DisplayServerOpti
     }
 }
 
-// Daemon startup can fail transiently on spawn or readiness; retry a few times.
-const DAEMON_START_MAX_RETRIES = 3
-const DAEMON_START_RETRY_DELAY_MS = 1000
-
 export class DisplayServerManager {
     #enabled: boolean
     #displayServerPreference: 'auto' | 'wayland' | 'xvfb'
@@ -77,7 +72,8 @@ export class DisplayServerManager {
     #force: boolean
     #log: ReturnType<typeof logger>
     #displayServer: DisplayServer | null = null
-    #initialized = false
+    #wayland = new WaylandDisplayServer()
+    #xvfb = new XvfbDisplayServer()
 
     constructor(options: DisplayServerOptions = {}) {
         this.#enabled = options.enabled ?? true
@@ -101,9 +97,8 @@ export class DisplayServerManager {
             return false
         }
 
-        // Once init() has run on this instance we know a display is active and
-        // workers must use it, regardless of what process.env now shows.
-        if (this.#initialized) {
+        // Once a server is active, workers must use it regardless of what process.env now shows.
+        if (this.#displayServer) {
             return true
         }
 
@@ -115,7 +110,7 @@ export class DisplayServerManager {
 
         // Idempotent: a second init() must not re-select and overwrite
         // #displayServer, which may already back a running daemon.
-        if (this.#initialized && this.#displayServer) {
+        if (this.#displayServer) {
             return true
         }
 
@@ -124,76 +119,70 @@ export class DisplayServerManager {
             return false
         }
 
-        this.#log.info('Display server should run, selecting implementation...')
+        for await (const displayServer of this.#candidates()) {
+            this.#displayServer = displayServer
+            this.#log.info(`${displayServer.name} display server is ready for use`)
+            return true
+        }
+        this.#log.warn('No display server available; continuing without virtual display')
+        return false
+    }
 
-        try {
-            const displayServer = await this.#selectDisplayServer()
-
-            if (displayServer) {
+    /**
+     * Start the first candidate that comes up and make it the active server, so
+     * injected flags match what is running. Null when none starts.
+     */
+    async startDaemon(options?: DisplayDaemonOptions): Promise<DisplayDaemon | null> {
+        if (!this.shouldRun()) {
+            return null
+        }
+        for await (const displayServer of this.#candidates()) {
+            try {
+                const daemon = await displayServer.startDaemon(options)
                 this.#displayServer = displayServer
-                this.#initialized = true
-                this.#log.info(`${displayServer.name} display server is ready for use`)
-                return true
+                return daemon
+            } catch (error) {
+                this.#log.warn(`${displayServer.name} failed to start: ${error instanceof Error ? error.message : String(error)}`)
             }
-
-            this.#log.warn('No display server available; continuing without virtual display')
-            return false
-        } catch (error) {
-            this.#log.error('Failed to setup display server:', error)
-            throw error
         }
-    }
-
-    async #selectDisplayServer(): Promise<DisplayServer | null> {
-        const wayland = new WaylandDisplayServer()
-        const xvfb = new XvfbDisplayServer()
-
-        if (this.#displayServerPreference === 'wayland') {
-            this.#log.info('Wayland display server requested')
-            return this.#tryDisplayServer(wayland)
-        }
-
-        if (this.#displayServerPreference === 'xvfb') {
-            this.#log.info('Xvfb display server requested')
-            return this.#tryDisplayServer(xvfb)
-        }
-
-        this.#log.info('Auto mode: Trying Wayland first...')
-        const selected = await this.#tryDisplayServer(wayland)
-        if (selected) {
-            return selected
-        }
-
-        this.#log.info('Wayland not available, trying Xvfb fallback...')
-        return this.#tryDisplayServer(xvfb)
-    }
-
-    // One place for the try/return that the four selection branches share.
-    async #tryDisplayServer(displayServer: DisplayServer): Promise<DisplayServer | null> {
-        if (await this.#ensureDisplayServerAvailable(displayServer)) {
-            return displayServer
-        }
+        this.#displayServer = null
         return null
     }
 
-    async #ensureDisplayServerAvailable(displayServer: DisplayServer): Promise<boolean> {
-        if (await displayServer.isAvailable()) {
-            this.#log.info(`${displayServer.name} is already available`)
-            return true
-        }
+    // Yielded lazily, so a server that starts means nothing later is probed or installed.
+    // Installed servers come first, so an existing Xvfb is used before Weston is installed.
+    async *#candidates(): AsyncGenerator<DisplayServer> {
+        const all = [this.#wayland, this.#xvfb]
+        const preferred = all.filter((displayServer) => displayServer.name === this.#displayServerPreference)
+        const order = preferred.length > 0 ? preferred : all
 
-        if (!this.#autoInstall) {
-            this.#log.warn(
-                `${displayServer.name} not found. Skipping automatic installation. To enable auto-install, set 'displayServerAutoInstall: true' in your WDIO config.`
-            )
-            return false
+        const missing: DisplayServer[] = []
+        for (const displayServer of order) {
+            if (await displayServer.isAvailable()) {
+                yield displayServer
+            } else {
+                missing.push(displayServer)
+            }
         }
-
-        this.#log.info(`Auto-installing ${displayServer.name}...`)
-        return await displayServer.install({
-            mode: this.#autoInstallMode,
-            command: this.#autoInstallCommand
-        })
+        for (const displayServer of missing) {
+            if (!this.#autoInstall) {
+                this.#log.warn(`${displayServer.name} not found. To enable auto-install, set 'displayServerAutoInstall: true' in your WDIO config.`)
+                continue
+            }
+            // Probe before and after: a custom install command is shared by both servers,
+            // so an earlier install may have provided this one, or provided the other instead.
+            if (!await displayServer.isAvailable()) {
+                this.#log.info(`Auto-installing ${displayServer.name}...`)
+                if (!await displayServer.install({ mode: this.#autoInstallMode, command: this.#autoInstallCommand })) {
+                    continue
+                }
+                if (!await displayServer.isAvailable()) {
+                    this.#log.warn(`${displayServer.name} still not found after installing`)
+                    continue
+                }
+            }
+            yield displayServer
+        }
     }
 
     #injectDisplayServerFlags(
@@ -265,19 +254,6 @@ export class DisplayServerManager {
         if (process.env.WAYLAND_DISPLAY && !process.env.DISPLAY) {
             this.#injectDisplayServerFlags(capabilities, [...WAYLAND_CHROME_FLAGS])
         }
-    }
-
-    async executeWithRetry<T>(
-        commandFn: () => Promise<T>,
-        context: string = 'display server operation'
-    ): Promise<T> {
-        return executeWithRetry({
-            fn: commandFn,
-            maxRetries: DAEMON_START_MAX_RETRIES,
-            retryDelay: DAEMON_START_RETRY_DELAY_MS,
-            log: this.#log,
-            context,
-        })
     }
 }
 

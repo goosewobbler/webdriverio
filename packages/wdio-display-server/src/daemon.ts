@@ -1,7 +1,7 @@
 import logger from '@wdio/logger'
 
 import { DisplayServerManager, optionsFromConfig } from './DisplayServerManager.js'
-import type { DisplayDaemon, DisplayDaemonOptions } from './types.js'
+import type { DisplayDaemonOptions } from './types.js'
 
 const log = logger('@wdio/display-server:daemon')
 
@@ -26,8 +26,9 @@ function daemonOptionsFromConfig(config: WebdriverIO.Config): DisplayDaemonOptio
  * Returns `null` (no-op) when:
  *  - not Linux,
  *  - `displayServerEnabled` is false,
- *  - `shouldRun()` says no, or
- *  - `DISPLAY` / `WAYLAND_DISPLAY` is already on `process.env`.
+ *  - `shouldRun()` says no,
+ *  - `DISPLAY` / `WAYLAND_DISPLAY` is already on `process.env`, or
+ *  - no display server could be started.
  *
  * Intended to be called from a `Runner`'s `initialize()`, which runs before
  * any service `onPrepare`.
@@ -49,23 +50,11 @@ export async function startDisplayDaemonFromConfig(
         return null
     }
 
-    const ready = await manager.init()
-    if (!ready) {
-        log.warn('Display server init returned false; skipping daemon startup')
+    const daemon = await manager.startDaemon(daemonOptionsFromConfig(config))
+    if (!daemon) {
+        log.warn('No display server could be started; continuing without a virtual display')
         return null
     }
-
-    const server = manager.getDisplayServer()
-    if (!server) {
-        return null
-    }
-
-    const daemonOptions: DisplayDaemonOptions = daemonOptionsFromConfig(config)
-    // Spawn is the most transient failure mode, so it's the step worth retrying.
-    const daemon: DisplayDaemon = await manager.executeWithRetry(
-        () => server.startDaemon(daemonOptions),
-        `${server.name} daemon startup`,
-    )
 
     // Capture pre-existing values so stop() can restore them.
     const envKeys = Object.keys(daemon.env)
@@ -76,7 +65,7 @@ export async function startDisplayDaemonFromConfig(
         }
     }
     Object.assign(process.env, daemon.env)
-    log.info(`Daemon ready (${server.name}); env: ${JSON.stringify(daemon.env)}`)
+    log.info(`Daemon ready (${manager.getDisplayServer()?.name}); env: ${JSON.stringify(daemon.env)}`)
 
     // Memoize the in-flight stop promise (not a sync flag) so the 'exit' listener
     // can still run daemon.stopSync() while an async stop() is mid-flight —

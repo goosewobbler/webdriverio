@@ -5,7 +5,7 @@ import url from 'node:url'
 import type { ChildProcess } from 'node:child_process'
 
 import { startDisplayDaemonFromConfig } from '../src/daemon.js'
-import { makeDaemonHandle, makeDisplayServer, makeManager, makeRetryManager } from './helpers.js'
+import { makeDaemonHandle, makeDisplayServer, makeManager } from './helpers.js'
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 const shimPath = path.join(__dirname, 'fixtures', 'env-echo.mjs')
@@ -153,39 +153,15 @@ describe('integration: startDisplayDaemonFromConfig ↔ real fork', () => {
         expect(stopSpy).not.toHaveBeenCalled()
     })
 
-    it('routes daemon startup through manager.executeWithRetry so the configured retry policy applies', async () => {
-        const startSpy = vi.fn()
-            .mockRejectedValueOnce(new Error('Xvfb spawn flake #1'))
-            .mockRejectedValueOnce(new Error('Xvfb spawn flake #2'))
-            .mockResolvedValueOnce(makeDaemonHandle({ env: { DISPLAY: ':99' } }))
+    it('returns null and publishes nothing when no display server could be started', async () => {
+        const manager = makeManager(null)
 
-        const server = makeDisplayServer({ name: 'xvfb', startDaemon: startSpy })
-        const manager = makeRetryManager(server)
+        const daemon = await startDisplayDaemonFromConfig({} as WebdriverIO.Config, manager)
 
-        const daemon = await startDisplayDaemonFromConfig(
-            {} as WebdriverIO.Config,
-            manager,
-        )
-
-        expect(daemon).not.toBeNull()
-        expect(startSpy).toHaveBeenCalledTimes(3)
-        expect(process.env.DISPLAY).toBe(':99')
-
-        await daemon!.stop()
-    })
-
-    it('surfaces the last error when daemon startup exhausts every retry', async () => {
-        const finalError = new Error('Xvfb spawn flake #final')
-        const startSpy = vi.fn().mockRejectedValue(finalError)
-        const server = makeDisplayServer({ name: 'xvfb', startDaemon: startSpy })
-        const manager = makeRetryManager(server)
-
-        await expect(
-            startDisplayDaemonFromConfig({} as WebdriverIO.Config, manager),
-        ).rejects.toBe(finalError)
-        expect(startSpy).toHaveBeenCalledTimes(3)
-        // Threw before the Object.assign step, so env stays untouched.
+        expect(daemon).toBeNull()
+        expect(manager.startDaemon).toHaveBeenCalledTimes(1)
         expect(process.env.DISPLAY).toBeUndefined()
+        expect(process.env.WAYLAND_DISPLAY).toBeUndefined()
     })
 
     it('registers an exit listener that uses stopSync, not the abandonable async stop', async () => {

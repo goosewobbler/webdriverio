@@ -98,7 +98,7 @@ interface DisplayServerOptions {
 - **`init(): Promise<boolean>`** - Initialize display server
 - **`getDisplayServer(): DisplayServer | null`** - Get the active display server instance
 - **`injectDisplayFlags(capabilities): void`** - Inject the display server's ozone flags into a worker's capabilities
-- **`executeWithRetry<T>(commandFn, context?): Promise<T>`** - Execute with automatic retry
+- **`startDaemon(options?): Promise<DisplayDaemon | null>`** - Start the first display server that comes up and return its daemon
 
 #### DisplayServer Interface
 
@@ -119,8 +119,10 @@ interface DisplayServer {
 The package automatically selects the best display server:
 
 1. **Try Wayland first** (`weston --backend=headless`)
-2. **Fall back to Xvfb** if Wayland is unavailable
+2. **Fall back to Xvfb** if Weston isn't installed or fails to start
 3. **Skip Xvfb on CentOS Stream 10** (Xvfb not available in RHEL 10+)
+
+With `displayServerAutoInstall`, a missing server is installed only when no installed one starts, so an existing Xvfb is used before Weston is installed. If no display server starts, the run continues without one.
 
 ### Manual Override
 
@@ -131,6 +133,8 @@ const manager = new DisplayServerManager({ displayServer: 'wayland' });
 // Force Xvfb only
 const manager = new DisplayServerManager({ displayServer: 'xvfb' });
 ```
+
+An explicit choice doesn't fall back to the other server.
 
 ## When does it run?
 
@@ -143,9 +147,8 @@ The utility automatically detects when a display server is needed:
 ## Features
 
 - **Wayland-first design**: Uses Weston headless backend on modern distributions
-- **Automatic fallback**: Falls back to Xvfb when Wayland unavailable
+- **Automatic fallback**: Falls back to Xvfb when Weston is unavailable or fails to start
 - **Cross-distro support**: Works on all major Linux distributions
-- **Automatic retry mechanism**: Handles display server startup failures
 - **Universal package manager support**: Detects and uses `apt`, `dnf`, `yum`, `zypper`, `pacman`, `apk`, `xbps`
 - **Chrome Wayland flags**: Automatically injects `--ozone-platform=wayland` for Chrome/Edge
 - **Electron support**: Sets `ELECTRON_OZONE_PLATFORM_HINT=wayland`
@@ -178,11 +181,6 @@ The utility automatically detects when a display server is needed:
 | **`xbps`** | `xbps-install` | Void Linux | `xvfb` |
 
 **Note**: Xvfb is not available on CentOS Stream 10 / RHEL 10+ (Wayland-only distributions).
-
-## Retry Mechanism
-
-Daemon startup is retried up to 3 times with progressive backoff
-(1000 ms × attempt) to absorb transient spawn or readiness failures.
 
 ## Environment Variables
 

@@ -2,7 +2,7 @@ import { vi, type Mock } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import type { DisplayDaemon, DisplayServer } from '../src/types.js'
+import type { DisplayDaemon, DisplayDaemonOptions, DisplayServer } from '../src/types.js'
 import type { DisplayServerManager } from '../src/DisplayServerManager.js'
 
 /**
@@ -113,39 +113,28 @@ export const makeDisplayServer = (overrides: Partial<DisplayServer> = {}): Displ
     ...overrides,
 } as DisplayServer)
 
-/**
- * Pass-through manager: `executeWithRetry` just runs the fn once. Specific
- * tests assert against a real retry policy via `makeRetryManager`.
- */
+/** Manager fake that starts `server` once, returning null without one or when it fails, like the real manager. */
 export const makeManager = (
     server: DisplayServer | null,
     { shouldRun = true }: { shouldRun?: boolean } = {},
-): DisplayServerManager => ({
-    shouldRun: () => shouldRun,
-    init: vi.fn().mockResolvedValue(server !== null),
-    getDisplayServer: () => server,
-    injectDisplayFlags: vi.fn(),
-    executeWithRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}) as unknown as DisplayServerManager
-
-/**
- * Manager whose `executeWithRetry` runs the real 3-attempt loop, so tests can
- * assert the configured retry policy is honoured end-to-end.
- */
-export const makeRetryManager = (server: DisplayServer): DisplayServerManager => ({
-    shouldRun: () => true,
-    init: vi.fn().mockResolvedValue(true),
-    getDisplayServer: () => server,
-    injectDisplayFlags: vi.fn(),
-    executeWithRetry: vi.fn(async (fn: () => Promise<unknown>) => {
-        let lastError: unknown
-        for (let i = 0; i < 3; i++) {
-            try {
-                return await fn()
-            } catch (err) {
-                lastError = err
+): DisplayServerManager => {
+    let active: DisplayServer | null = null
+    return {
+        shouldRun: () => shouldRun,
+        getDisplayServer: () => active,
+        injectDisplayFlags: vi.fn(),
+        startDaemon: vi.fn(async (options?: DisplayDaemonOptions) => {
+            if (!server) {
+                return null
             }
-        }
-        throw lastError
-    }),
-}) as unknown as DisplayServerManager
+            try {
+                const daemon = await server.startDaemon(options)
+                active = server
+                return daemon
+            } catch {
+                active = null
+                return null
+            }
+        }),
+    } as unknown as DisplayServerManager
+}
