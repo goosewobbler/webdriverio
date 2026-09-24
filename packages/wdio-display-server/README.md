@@ -94,8 +94,8 @@ interface DisplayServerOptions {
 
 #### Methods
 
-- **`shouldRun(capabilities?): boolean`** - Check if display server should run
-- **`init(capabilities?): Promise<boolean>`** - Initialize display server
+- **`shouldRun(): boolean`** - Check if display server should run
+- **`init(): Promise<boolean>`** - Initialize display server
 - **`getDisplayServer(): DisplayServer | null`** - Get the active display server instance
 - **`injectDisplayFlags(capabilities): void`** - Inject the display server's ozone flags into a worker's capabilities
 - **`executeWithRetry<T>(commandFn, context?): Promise<T>`** - Execute with automatic retry
@@ -136,24 +136,15 @@ const manager = new DisplayServerManager({ displayServer: 'xvfb' });
 
 The utility automatically detects when a display server is needed:
 
-- ✅ Linux systems without a DISPLAY environment variable
-- ✅ Linux systems when headless browser flags are detected
+- ✅ Linux systems without a `DISPLAY` or `WAYLAND_DISPLAY` environment variable
 - ❌ Non-Linux systems (unless `force: true`)
-- ❌ Linux systems with existing DISPLAY (unless headless flags are detected)
-
-### Headless Flag Detection
-
-Automatically detected flags:
-- **Chrome/Chromium**: `--headless`, `--headless=new`, `--headless=old`
-- **Firefox**: `--headless`, `-headless`
-- **Edge** (Chromium-based): `--headless`, `--headless=new`, `--headless=old`
+- ❌ Linux systems with an existing `DISPLAY` or `WAYLAND_DISPLAY` (unless `force: true`)
 
 ## Features
 
 - **Wayland-first design**: Uses Weston headless backend on modern distributions
 - **Automatic fallback**: Falls back to Xvfb when Wayland unavailable
 - **Cross-distro support**: Works on all major Linux distributions
-- **Smart headless detection**: Automatically detects browser headless flags
 - **Automatic retry mechanism**: Handles display server startup failures
 - **Universal package manager support**: Detects and uses `apt`, `dnf`, `yum`, `zypper`, `pacman`, `apk`, `xbps`
 - **Chrome Wayland flags**: Automatically injects `--ozone-platform=wayland` for Chrome/Edge

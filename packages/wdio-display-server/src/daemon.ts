@@ -1,5 +1,4 @@
 import logger from '@wdio/logger'
-import type { Capabilities } from '@wdio/types'
 
 import { DisplayServerManager, optionsFromConfig } from './DisplayServerManager.js'
 import type { DisplayDaemon, DisplayDaemonOptions } from './types.js'
@@ -33,12 +32,11 @@ function daemonOptionsFromConfig(config: WebdriverIO.Config): DisplayDaemonOptio
  * Intended to be called from a `Runner`'s `initialize()`, which runs before
  * any service `onPrepare`.
  *
- * @param manager Optional pre-constructed manager; tests inject one to avoid
- *   real Xvfb/Weston spawns.
+ * @param manager Pass the manager that will later inject flags, so it knows the
+ *   active server. Defaults to a fresh one.
  */
 export async function startDisplayDaemonFromConfig(
     config: WebdriverIO.Config,
-    capabilities: Capabilities.TestrunnerCapabilities,
     manager: DisplayServerManager = new DisplayServerManager(optionsFromConfig(config)),
 ): Promise<RunningDaemon | null> {
     if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
@@ -46,12 +44,12 @@ export async function startDisplayDaemonFromConfig(
         return null
     }
 
-    if (!manager.shouldRun(capabilities as Capabilities.ResolvedTestrunnerCapabilities)) {
+    if (!manager.shouldRun()) {
         log.info('Display server not required on this platform/config')
         return null
     }
 
-    const ready = await manager.init(capabilities as Capabilities.ResolvedTestrunnerCapabilities)
+    const ready = await manager.init()
     if (!ready) {
         log.warn('Display server init returned false; skipping daemon startup')
         return null

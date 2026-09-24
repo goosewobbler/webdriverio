@@ -142,6 +142,17 @@ describe('DisplayServerManager (gap coverage)', () => {
         })
     })
 
+    describe('shouldRun', () => {
+        it('returns false on Linux when only WAYLAND_DISPLAY is set', () => {
+            process.env.WAYLAND_DISPLAY = 'wayland-0'
+            try {
+                expect(new DisplayServerManager().shouldRun()).toBe(false)
+            } finally {
+                delete process.env.WAYLAND_DISPLAY
+            }
+        })
+    })
+
     describe('shouldRun #initialized gate', () => {
         it('returns true after init() once a display server is active, even with DISPLAY set later', async () => {
             mockXvfb.isAvailable.mockResolvedValue(true)
@@ -390,16 +401,15 @@ describe('DisplayServerManager (gap coverage)', () => {
             expect(options?.args).toEqual(['--ozone-platform=wayland'])
         })
 
-        it('skips malformed capability entries instead of throwing', async () => {
+        it('ignores a capability root that is not a capabilities object', async () => {
             mockWayland.isAvailable.mockResolvedValue(true)
             const mgr = new DisplayServerManager({ displayServer: 'wayland' })
             await mgr.init()
 
-            const valid = { browserName: 'chrome' } as WebdriverIO.Capabilities
-            const caps = ['chrome', null, undefined, 42, valid]
-
-            expect(() => mgr.injectDisplayFlags(caps as never)).not.toThrow()
-            expect(valid['goog:chromeOptions']?.args).toEqual(['--ozone-platform=wayland'])
+            const nested = { browserName: 'chrome' } as WebdriverIO.Capabilities
+            expect(() => mgr.injectDisplayFlags('chrome' as never)).not.toThrow()
+            expect(() => mgr.injectDisplayFlags([nested] as never)).not.toThrow()
+            expect(nested['goog:chromeOptions']).toBeUndefined()
         })
 
         it('skips multiremote entries whose value is not an object (e.g. an unset env var)', async () => {

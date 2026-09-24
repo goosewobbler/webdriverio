@@ -106,9 +106,9 @@ export const config: WebdriverIO.Config = {
 - The runner considers Xvfb when:
 
   - Running on Linux
-  - No `DISPLAY` is set (headless environment), or headless browser flags are passed
+  - Neither `DISPLAY` nor `WAYLAND_DISPLAY` is set (headless environment)
 
-- If `DISPLAY` is set, the runner won’t force Xvfb by default and will honor your existing X server/window manager.
+- If either is set, the runner won’t start Xvfb and will honor your existing display server.
 
 Notes:
 - `autoXvfb: false` disables Xvfb usage entirely (no wrapping with `xvfb-run`).
@@ -186,5 +186,4 @@ Notes:
 ## Advanced
 
 - The runner creates processes via a factory that wraps the node worker with `xvfb-run` if Xvfb is needed and available.
-- Headless browser flags (Chrome/Edge/Firefox) signal headless usage and can trigger Xvfb in environments without a `DISPLAY`.
 
