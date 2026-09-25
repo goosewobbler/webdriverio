@@ -1,5 +1,6 @@
 import { exec, execFile } from 'node:child_process'
-import { access } from 'node:fs/promises'
+import { access, stat } from 'node:fs/promises'
+import path from 'node:path'
 import { promisify } from 'node:util'
 import type logger from '@wdio/logger'
 import type { DisplayDaemonOptions, DisplayServerInstallOptions } from './types.js'
@@ -10,14 +11,20 @@ const execFileAsync = promisify(execFile)
 // Package installs pull toolchains/mirrors and are slow; give them 4 minutes.
 const INSTALL_TIMEOUT_MS = 240_000
 
-/** True if `command` is on PATH. */
+/** True if `command` is an executable file in a PATH directory. */
 export async function commandExists(command: string): Promise<boolean> {
-    try {
-        await execAsync(`which ${command}`)
-        return true
-    } catch {
-        return false
+    // Searched as spawn (libuv) searches: an unset PATH means /usr/bin:/bin, an empty entry the working directory.
+    const dirs = process.env.PATH === undefined ? ['/usr/bin', '/bin'] : process.env.PATH.split(path.delimiter)
+    for (const dir of dirs) {
+        try {
+            // Not path.join, which collapses `..` before symlinks resolve, unlike execvp.
+            const stats = await stat(dir ? `${dir}/${command}` : command)
+            if (stats.isFile() && (stats.mode & 0o111) !== 0) {
+                return true
+            }
+        } catch { /* not in this directory */ }
     }
+    return false
 }
 
 /** Daemon screen geometry with the shared defaults applied (depth is Xvfb-only). */
@@ -30,25 +37,25 @@ export function resolveDaemonDimensions(options?: DisplayDaemonOptions): { width
 }
 
 /**
- * Poll for the socket file at `path` to appear, up to `timeoutMs`.
+ * Poll for the socket file at `socketPath` to appear, up to `timeoutMs`.
  *
  * @param label - name used in the timeout error message (e.g. "Wayland socket").
  * @param signal - stops polling early; callers abort it once the exit/socket race settles.
  */
-export async function waitForSocket(path: string, timeoutMs: number, label = 'socket', signal?: AbortSignal): Promise<void> {
+export async function waitForSocket(socketPath: string, timeoutMs: number, label = 'socket', signal?: AbortSignal): Promise<void> {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
         if (signal?.aborted) {
             return
         }
         try {
-            await access(path)
+            await access(socketPath)
             return
         } catch {
             await new Promise((resolve) => setTimeout(resolve, 50))
         }
     }
-    throw new Error(`Timed out waiting for ${label} at ${path}`)
+    throw new Error(`Timed out waiting for ${label} at ${socketPath}`)
 }
 
 export async function detectPackageManager(): Promise<string> {
@@ -62,11 +69,9 @@ export async function detectPackageManager(): Promise<string> {
     ]
 
     for (const { command, name } of packageManagers) {
-        try {
-            // execFile (no shell) — no shell needed to run a fixed command name.
-            await execFileAsync('which', [command])
+        if (await commandExists(command)) {
             return name
-        } catch { /* try the next candidate */ }
+        }
     }
 
     return 'unknown'
@@ -123,10 +128,9 @@ export async function installViaPackageManager({
 
     if (options?.mode === 'sudo') {
         if (process.getuid && process.getuid() !== 0) {
-            try {
-                await execFileAsync('which', ['sudo'])
+            if (await commandExists('sudo')) {
                 sudoWrap = true
-            } catch {
+            } else {
                 log.warn('sudo not available, attempting install without sudo')
             }
         }

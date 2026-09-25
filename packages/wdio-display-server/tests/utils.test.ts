@@ -1,10 +1,14 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import path from 'node:path'
+
+import { onPath } from './helpers.js'
 
 const mockExecAsync = vi.hoisted(() => vi.fn())
 const mockExecFileAsync = vi.hoisted(() => vi.fn())
 const mockExecFn = vi.hoisted(() => Symbol('mock-exec'))
 const mockExecFileFn = vi.hoisted(() => Symbol('mock-execFile'))
 const mockAccess = vi.hoisted(() => vi.fn())
+const mockStat = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({
     // Stand-in identities — `promisify(exec)` and `promisify(execFile)` are
@@ -27,9 +31,10 @@ vi.mock('node:util', () => ({
 
 vi.mock('node:fs/promises', () => ({
     access: mockAccess,
+    stat: mockStat,
 }))
 
-const { detectPackageManager, waitForSocket, installViaPackageManager } = await import('../src/utils.js')
+const { commandExists, detectPackageManager, waitForSocket, installViaPackageManager } = await import('../src/utils.js')
 
 const makeLogger = () => ({
     info: vi.fn(),
@@ -38,108 +43,98 @@ const makeLogger = () => ({
     debug: vi.fn(),
 }) as never
 
-describe('detectPackageManager', () => {
+describe('commandExists', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        mockExecFileAsync.mockReset()
+        mockStat.mockReset()
+        vi.stubEnv('PATH', ['/usr/local/bin', '/usr/bin'].join(path.delimiter))
     })
 
-    it('returns "apt" when apt-get is available', async () => {
-        mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })
-
-        const result = await detectPackageManager()
-
-        expect(result).toBe('apt')
-        expect(mockExecFileAsync).toHaveBeenCalledWith('which', ['apt-get'])
+    afterEach(() => {
+        vi.unstubAllEnvs()
     })
 
-    it('returns "dnf" when apt-get is missing but dnf is available', async () => {
-        mockExecFileAsync
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockResolvedValueOnce({ stdout: '/usr/bin/dnf', stderr: '' })
+    it('finds an executable file in a PATH directory', async () => {
+        onPath(mockStat, 'weston')
 
-        const result = await detectPackageManager()
-
-        expect(result).toBe('dnf')
-        expect(mockExecFileAsync).toHaveBeenCalledWith('which', ['apt-get'])
-        expect(mockExecFileAsync).toHaveBeenCalledWith('which', ['dnf'])
+        expect(await commandExists('weston')).toBe(true)
     })
 
-    it('does not probe yum, since yum-only systems are too old to run Node.js 22', async () => {
-        mockExecFileAsync.mockRejectedValue(new Error('not found'))
+    it('returns false when no PATH directory has the command', async () => {
+        onPath(mockStat)
+
+        expect(await commandExists('weston')).toBe(false)
+    })
+
+    it('ignores directories and files without an execute bit', async () => {
+        mockStat
+            .mockResolvedValueOnce({ isFile: () => false, mode: 0o40755 })
+            .mockResolvedValueOnce({ isFile: () => true, mode: 0o100644 })
+
+        expect(await commandExists('weston')).toBe(false)
+        expect(mockStat).toHaveBeenCalledTimes(2)
+    })
+
+    it('searches PATH as spawn does: an empty entry is the working directory, and entries are not normalized', async () => {
+        vi.stubEnv('PATH', ['', '/opt/tool/../bin'].join(path.delimiter))
+        onPath(mockStat)
+
+        await commandExists('weston')
+
+        expect(mockStat.mock.calls).toEqual([['weston'], ['/opt/tool/../bin/weston']])
+    })
+
+    it('falls back to /usr/bin:/bin when PATH is unset, as spawn does', async () => {
+        vi.stubEnv('PATH', undefined)
+        onPath(mockStat)
+
+        await commandExists('weston')
+
+        expect(mockStat.mock.calls).toEqual([['/usr/bin/weston'], ['/bin/weston']])
+    })
+})
+
+describe('detectPackageManager', () => {
+    const PROBE_ORDER = [['apt-get', 'apt'], ['dnf', 'dnf'], ['zypper', 'zypper'], ['pacman', 'pacman'], ['apk', 'apk'], ['xbps-install', 'xbps']]
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockStat.mockReset()
+        vi.stubEnv('PATH', '/usr/bin')
+    })
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
+    })
+
+    // Each case installs every manager probed after the expected one, so this pins the whole order.
+    it.each(PROBE_ORDER.map(([, name], i) => [name, PROBE_ORDER.slice(i).map(([command]) => command)]))(
+        'detects %s ahead of the managers probed after it',
+        async (name, installed) => {
+            onPath(mockStat, ...installed)
+
+            expect(await detectPackageManager()).toBe(name)
+        },
+    )
+
+    it('stops at the first package manager it finds', async () => {
+        onPath(mockStat, ...PROBE_ORDER.map(([command]) => command))
 
         await detectPackageManager()
 
-        expect(mockExecFileAsync).not.toHaveBeenCalledWith('which', ['yum'])
+        expect(mockStat).toHaveBeenCalledTimes(1)
     })
 
-    it('returns "zypper" when only zypper is available', async () => {
-        mockExecFileAsync
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockResolvedValueOnce({ stdout: '/usr/bin/zypper', stderr: '' })
+    it('ignores yum, since yum-only systems are too old to run Node.js 22', async () => {
+        onPath(mockStat, 'yum')
 
-        const result = await detectPackageManager()
-
-        expect(result).toBe('zypper')
-    })
-
-    it('returns "pacman" when only pacman is available', async () => {
-        mockExecFileAsync
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockResolvedValueOnce({ stdout: '/usr/bin/pacman', stderr: '' })
-
-        const result = await detectPackageManager()
-
-        expect(result).toBe('pacman')
-    })
-
-    it('returns "apk" when only apk is available', async () => {
-        mockExecFileAsync
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockResolvedValueOnce({ stdout: '/sbin/apk', stderr: '' })
-
-        const result = await detectPackageManager()
-
-        expect(result).toBe('apk')
-    })
-
-    it('returns "xbps" when only xbps-install is available', async () => {
-        mockExecFileAsync
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockRejectedValueOnce(new Error('not found'))
-            .mockResolvedValueOnce({ stdout: '/usr/bin/xbps-install', stderr: '' })
-
-        const result = await detectPackageManager()
-
-        expect(result).toBe('xbps')
-        expect(mockExecFileAsync).toHaveBeenCalledWith('which', ['xbps-install'])
+        expect(await detectPackageManager()).toBe('unknown')
     })
 
     it('returns "unknown" when no package manager is found', async () => {
-        mockExecFileAsync.mockRejectedValue(new Error('not found'))
+        onPath(mockStat)
 
-        const result = await detectPackageManager()
-
-        expect(result).toBe('unknown')
-        expect(mockExecFileAsync).toHaveBeenCalledTimes(6)
-    })
-
-    it('probes package managers in priority order, stopping at first hit', async () => {
-        mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })
-
-        await detectPackageManager()
-
-        expect(mockExecFileAsync).toHaveBeenCalledTimes(1)
-        expect(mockExecFileAsync).toHaveBeenCalledWith('which', ['apt-get'])
+        expect(await detectPackageManager()).toBe('unknown')
     })
 })
 
@@ -208,6 +203,12 @@ describe('installViaPackageManager', () => {
 
     beforeEach(() => {
         vi.clearAllMocks()
+        mockStat.mockReset()
+        vi.stubEnv('PATH', '/usr/bin')
+    })
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
     })
 
     it('runs a custom string command verbatim and short-circuits PM detection', async () => {
@@ -223,6 +224,7 @@ describe('installViaPackageManager', () => {
         expect(ok).toBe(true)
         expect(mockExecAsync).toHaveBeenCalledWith('my-install', { timeout: 240000 })
         expect(mockExecAsync).toHaveBeenCalledTimes(1)
+        expect(mockStat).not.toHaveBeenCalled()
     })
 
     it('runs an array-form custom command via execFile so each element is a true argv token', async () => {
@@ -268,10 +270,7 @@ describe('installViaPackageManager', () => {
     })
 
     it('returns false when no package manager is detected', async () => {
-        // 7 rejections so detectPackageManager returns 'unknown'
-        for (let i = 0; i < 7; i++) {
-            mockExecFileAsync.mockRejectedValueOnce(new Error('not found'))
-        }
+        onPath(mockStat)
 
         const ok = await installViaPackageManager({
             name: 'Foo',
@@ -285,7 +284,7 @@ describe('installViaPackageManager', () => {
 
     it('returns false when detected PM is not in the supplied table', async () => {
         // Detect apt, but our table only has dnf
-        mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })
+        onPath(mockStat, 'apt-get')
 
         const ok = await installViaPackageManager({
             name: 'Foo',
@@ -300,8 +299,8 @@ describe('installViaPackageManager', () => {
     describe('mode: "root"', () => {
         it('runs install command directly when root', async () => {
             ;(process as any).getuid = vi.fn().mockReturnValue(0)
-            mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' }) // which apt-get
-            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })                   // install
+            onPath(mockStat, 'apt-get')
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' }) // install
 
             const ok = await installViaPackageManager({
                 name: 'Foo',
@@ -316,7 +315,7 @@ describe('installViaPackageManager', () => {
 
         it('refuses to install when not root', async () => {
             ;(process as any).getuid = vi.fn().mockReturnValue(1000)
-            mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })
+            onPath(mockStat, 'apt-get')
 
             const ok = await installViaPackageManager({
                 name: 'Foo',
@@ -333,10 +332,8 @@ describe('installViaPackageManager', () => {
     describe('mode: "sudo"', () => {
         it('runs `sudo -n sh -c <cmd>` via execFile when non-root and sudo is on PATH', async () => {
             ;(process as any).getuid = vi.fn().mockReturnValue(1000)
-            mockExecFileAsync
-                .mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })         // which apt-get (detect PM)
-                .mockResolvedValueOnce({ stdout: '/usr/bin/sudo', stderr: '' })            // which sudo
-                .mockResolvedValueOnce({ stdout: 'ok', stderr: '' })                       // sudo install
+            onPath(mockStat, 'apt-get', 'sudo')
+            mockExecFileAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' }) // sudo install
 
             const ok = await installViaPackageManager({
                 name: 'Foo',
@@ -359,10 +356,8 @@ describe('installViaPackageManager', () => {
 
         it('attempts install without sudo wrapping when sudo is missing', async () => {
             ;(process as any).getuid = vi.fn().mockReturnValue(1000)
-            mockExecFileAsync
-                .mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' })   // which apt-get (detect PM)
-                .mockRejectedValueOnce(new Error('no sudo'))                         // which sudo fails
-            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })        // install (non-sudo)
+            onPath(mockStat, 'apt-get')
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' }) // install (non-sudo)
 
             const ok = await installViaPackageManager({
                 name: 'Foo',
@@ -377,8 +372,8 @@ describe('installViaPackageManager', () => {
 
         it('does not wrap with sudo when running as root', async () => {
             ;(process as any).getuid = vi.fn().mockReturnValue(0)
-            mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' }) // which apt-get (detect PM)
-            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })                   // install
+            onPath(mockStat, 'apt-get')
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' }) // install
 
             await installViaPackageManager({
                 name: 'Foo',
@@ -388,15 +383,14 @@ describe('installViaPackageManager', () => {
             })
 
             expect(mockExecAsync).toHaveBeenCalledWith('apt install -y foo', { timeout: 240000 })
-            // No sudo wrapping: the only execFile call is the `which` PM probe, never `sudo …`
             expect(mockExecFileAsync).not.toHaveBeenCalledWith('sudo', expect.anything(), expect.anything())
         })
     })
 
     it('returns false when the install command itself fails', async () => {
         ;(process as any).getuid = vi.fn().mockReturnValue(0)
-        mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/apt-get', stderr: '' }) // which apt-get (detect PM)
-        mockExecAsync.mockRejectedValueOnce(new Error('apt failed'))                        // install
+        onPath(mockStat, 'apt-get')
+        mockExecAsync.mockRejectedValueOnce(new Error('apt failed')) // install
 
         const ok = await installViaPackageManager({
             name: 'Foo',

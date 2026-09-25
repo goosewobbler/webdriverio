@@ -22,7 +22,6 @@ RUN pacman -Sy --noconfirm \
         sudo \
         nodejs-lts-jod \
         npm \
-        which \
         weston \
         libdisplay-info \
         chromium && \

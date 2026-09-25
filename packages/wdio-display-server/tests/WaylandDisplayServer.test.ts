@@ -1,11 +1,12 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import path from 'node:path'
 
-import { arrangeSpawn, queuePackageManagerDetection, runAsRoot, trackExitListeners } from './helpers.js'
+import { PM_NAME_TO_CMD, arrangeSpawn, onPath, runAsRoot, trackExitListeners } from './helpers.js'
 
 const mockExecAsync = vi.hoisted(() => vi.fn())
 const mockSpawn = vi.hoisted(() => vi.fn())
 const mockAccess = vi.hoisted(() => vi.fn())
+const mockStat = vi.hoisted(() => vi.fn())
 const mockMkdtemp = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 
@@ -29,6 +30,7 @@ vi.mock('node:fs/promises', () => ({
     access: mockAccess,
     mkdtemp: mockMkdtemp,
     rm: mockRm,
+    stat: mockStat,
 }))
 
 vi.mock('@wdio/logger', () => import(path.join(process.cwd(), '__mocks__', '@wdio/logger')))
@@ -42,6 +44,7 @@ describe('WaylandDisplayServer', () => {
 
     beforeEach(() => {
         vi.clearAllMocks()
+        mockStat.mockReset()
         mockMkdtemp.mockResolvedValue(RUNTIME_DIR)
         mockRm.mockResolvedValue(undefined)
     })
@@ -52,15 +55,14 @@ describe('WaylandDisplayServer', () => {
 
     describe('isAvailable', () => {
         it('returns true when weston is on PATH', async () => {
-            mockExecAsync.mockResolvedValueOnce({ stdout: '/usr/bin/weston', stderr: '' })
+            onPath(mockStat, 'weston')
             const server = new WaylandDisplayServer()
 
             expect(await server.isAvailable()).toBe(true)
-            expect(mockExecAsync).toHaveBeenCalledWith('which weston')
         })
 
         it('returns false when weston is not on PATH', async () => {
-            mockExecAsync.mockRejectedValueOnce(new Error('not found'))
+            onPath(mockStat)
             const server = new WaylandDisplayServer()
 
             expect(await server.isAvailable()).toBe(false)
@@ -84,7 +86,7 @@ describe('WaylandDisplayServer', () => {
             expect(result).toBe(true)
             expect(mockExecAsync).toHaveBeenCalledWith('my-custom-install', { timeout: 240000 })
             // Custom command short-circuits before package-manager detection.
-            expect(mockExecAsync).not.toHaveBeenCalledWith('which apt-get')
+            expect(mockStat).not.toHaveBeenCalled()
         })
 
         it('runs an array-form custom command via execFile so each element is a true argv token', async () => {
@@ -106,7 +108,7 @@ describe('WaylandDisplayServer', () => {
         })
 
         it('installs via apt when detected and running as root', async () => {
-            queuePackageManagerDetection(mockExecAsync, 'apt')
+            onPath(mockStat, 'apt-get')
             mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })
             runAsRoot()
             const server = new WaylandDisplayServer()
@@ -127,7 +129,7 @@ describe('WaylandDisplayServer', () => {
             ['apk', 'apk update && apk add --no-cache weston weston-backend-headless weston-shell-desktop'],
             ['xbps', 'xbps-install -Suy xbps && xbps-install -y weston'],
         ])('uses the correct install command for %s', async (pm, expectedCmd) => {
-            queuePackageManagerDetection(mockExecAsync, pm)
+            onPath(mockStat, PM_NAME_TO_CMD[pm])
             mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })
             runAsRoot()
             const server = new WaylandDisplayServer()
@@ -139,7 +141,7 @@ describe('WaylandDisplayServer', () => {
         })
 
         it('returns false when the install command itself fails', async () => {
-            queuePackageManagerDetection(mockExecAsync, 'apt')
+            onPath(mockStat, 'apt-get')
             mockExecAsync.mockRejectedValueOnce(new Error('apt failed'))
             runAsRoot()
             const server = new WaylandDisplayServer()
