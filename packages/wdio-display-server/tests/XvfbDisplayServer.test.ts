@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import path from 'node:path'
 
-import { PM_NAME_TO_CMD, arrangeDisplayFdSpawn, onPath, runAsRoot, trackExitListeners } from './helpers.js'
+import { PM_NAME_TO_CMD, arrangeDisplayFdSpawn, onPath, runAsRoot, runAsUser, trackExitListeners } from './helpers.js'
 
 const mockExecAsync = vi.hoisted(() => vi.fn())
 const mockSpawn = vi.hoisted(() => vi.fn())
@@ -73,6 +73,27 @@ describe('XvfbDisplayServer', () => {
     })
 
     describe('install', () => {
+        it('installs through sudo -n when not root in sudo mode', async () => {
+            onPath(mockStat, 'apt-get', 'sudo')
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })
+            runAsUser()
+
+            expect(await new XvfbDisplayServer().install({ mode: 'sudo' })).toBe(true)
+            expect(mockExecAsync).toHaveBeenCalledWith(
+                'sudo',
+                ['-n', 'sh', '-c', 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb'],
+                { timeout: 240000 }
+            )
+        })
+
+        it('runs a custom install command verbatim', async () => {
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })
+
+            expect(await new XvfbDisplayServer().install({ command: 'my-xvfb-install' })).toBe(true)
+            expect(mockExecAsync).toHaveBeenCalledWith('my-xvfb-install', { timeout: 240000 })
+            expect(mockStat).not.toHaveBeenCalled()
+        })
+
         it.each([
             ['apt', 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb'],
             ['dnf', 'dnf -y makecache && dnf -y install xorg-x11-server-Xvfb'],

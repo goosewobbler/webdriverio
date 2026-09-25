@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import path from 'node:path'
 
-import { PM_NAME_TO_CMD, arrangeSpawn, onPath, runAsRoot, trackExitListeners } from './helpers.js'
+import { PM_NAME_TO_CMD, arrangeSpawn, onPath, runAsRoot, runAsUser, trackExitListeners } from './helpers.js'
 
 const mockExecAsync = vi.hoisted(() => vi.fn())
 const mockSpawn = vi.hoisted(() => vi.fn())
@@ -118,6 +118,19 @@ describe('WaylandDisplayServer', () => {
             expect(result).toBe(true)
             expect(mockExecAsync).toHaveBeenCalledWith(
                 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y weston',
+                { timeout: 240000 }
+            )
+        })
+
+        it('installs through sudo -n when not root in sudo mode', async () => {
+            onPath(mockStat, 'apt-get', 'sudo')
+            mockExecAsync.mockResolvedValueOnce({ stdout: 'ok', stderr: '' })
+            runAsUser()
+
+            expect(await new WaylandDisplayServer().install({ mode: 'sudo' })).toBe(true)
+            expect(mockExecAsync).toHaveBeenCalledWith(
+                'sudo',
+                ['-n', 'sh', '-c', 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y weston'],
                 { timeout: 240000 }
             )
         })

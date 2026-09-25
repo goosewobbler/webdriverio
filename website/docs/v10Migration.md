@@ -127,4 +127,24 @@ Other changes you may notice:
 - A host with only `WAYLAND_DISPLAY` set now counts as having a display. v9 checked only `DISPLAY` and ran workers under Xvfb there. v10 starts nothing and opens browser windows on your compositor. To run them under Xvfb as before, unset `WAYLAND_DISPLAY` and set `displayServer: 'xvfb'`.
 - The default screen is 1920x1080. v9 used the default of `xvfb-run`, which is 1280x1024 on Debian and Ubuntu. To keep that size, set `displayServerWidth: 1280` and `displayServerHeight: 1024`.
 - Under Weston, WebdriverIO adds `--ozone-platform=wayland` to the Chrome, Edge and Electron sessions it drives. Weston provides no `DISPLAY`, so if your tests or tools need X11, set `displayServer: 'xvfb'`.
-- If you called `@wdio/xvfb` directly, use `DisplayServerManager` from `@wdio/display-server` instead.
+- If you called `@wdio/xvfb` directly, use `DisplayServerManager` from `@wdio/display-server` instead. Where you ran `xvfb.init()` and wrapped commands in `xvfb-run`, or spawned processes through `ProcessFactory`, start a display and pass its environment to the processes that need it. This keeps v9's Xvfb and screen size. On a host where only `WAYLAND_DISPLAY` is set, unset it first, or `startDaemon()` starts nothing:
+
+  ```js
+  import { spawn } from 'node:child_process'
+  import { once } from 'node:events'
+  import { DisplayServerManager } from '@wdio/display-server'
+
+  const manager = new DisplayServerManager({ displayServer: 'xvfb' })
+  const daemon = await manager.startDaemon({ width: 1280, height: 1024 })
+  // startDaemon() also returns null when a display already exists
+  if (!daemon && manager.shouldRun()) {
+      throw new Error('Xvfb could not be started')
+  }
+  try {
+      const child = spawn('your-command', { shell: true, stdio: 'inherit', env: { ...process.env, ...daemon?.env } })
+      const [code] = await once(child, 'exit')
+      process.exitCode = code ?? 1
+  } finally {
+      await daemon?.stop()
+  }
+  ```

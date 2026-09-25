@@ -40,11 +40,11 @@
   "typeScriptVersion": "3.8.3",
   "dependencies": {
     "@wdio/logger": "workspace:*",
+    "@wdio/types": "workspace:*",
     "@wdio/utils": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.20.4",
-    "@wdio/types": "workspace:*"
+    "@types/node": "^22.20.4"
   },
   "publishConfig": {
     "access": "public"
