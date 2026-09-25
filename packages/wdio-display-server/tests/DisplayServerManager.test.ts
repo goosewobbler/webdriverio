@@ -591,4 +591,67 @@ describe('optionsFromConfig', () => {
         expect(result.displayServer).toBeUndefined()
         expect(result.autoInstall).toBeUndefined()
     })
+
+    describe('deprecated xvfb* keys', () => {
+        const warn = vi.mocked(logger('@wdio/display-server').warn)
+        const see = ' See https://webdriver.io/docs/v10-migration#virtual-displays-on-linux'
+        beforeEach(() => warn.mockClear())
+
+        it('maps each key and warns naming its replacement', () => {
+            const result = optionsFromConfig({
+                autoXvfb: false,
+                xvfbAutoInstall: true,
+                xvfbAutoInstallMode: 'root',
+                xvfbAutoInstallCommand: 'custom-cmd',
+            } as never)
+
+            expect(result).toMatchObject({
+                enabled: false,
+                autoInstall: true,
+                autoInstallMode: 'root',
+                autoInstallCommand: 'custom-cmd',
+            })
+            expect(warn.mock.calls).toEqual([
+                ['`autoXvfb` is deprecated, use `displayServerEnabled` instead.' + see],
+                ['`xvfbAutoInstall` is deprecated, use `displayServerAutoInstall` instead.' + see],
+                ['`xvfbAutoInstallMode` is deprecated, use `displayServerAutoInstallMode` instead.' + see],
+                ['`xvfbAutoInstallCommand` is deprecated, use `displayServerAutoInstallCommand` instead.' + see],
+            ])
+        })
+
+        it('prefers the displayServer* key when both are set', () => {
+            const result = optionsFromConfig({
+                displayServerEnabled: false,
+                autoXvfb: true,
+                displayServerAutoInstall: false,
+                xvfbAutoInstall: true,
+                displayServerAutoInstallMode: 'root',
+                xvfbAutoInstallMode: 'sudo',
+                displayServerAutoInstallCommand: 'new-cmd',
+                xvfbAutoInstallCommand: 'old-cmd',
+            } as never)
+
+            expect(result).toMatchObject({
+                enabled: false,
+                autoInstall: false,
+                autoInstallMode: 'root',
+                autoInstallCommand: 'new-cmd',
+            })
+        })
+
+        it('warns that the retry keys have no effect', () => {
+            optionsFromConfig({ xvfbMaxRetries: 5, xvfbRetryDelay: 1500 } as never)
+
+            expect(warn.mock.calls).toEqual([
+                ['`xvfbMaxRetries` is deprecated and has no effect, since display-server startup is not retried.' + see],
+                ['`xvfbRetryDelay` is deprecated and has no effect, since display-server startup is not retried.' + see],
+            ])
+        })
+
+        it('does not warn for a config without them', () => {
+            optionsFromConfig({ displayServerEnabled: false } as never)
+
+            expect(warn).not.toHaveBeenCalled()
+        })
+    })
 })

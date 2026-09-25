@@ -53,13 +53,38 @@ function forEachBrowserCapability(root: unknown, visit: (cap: WebdriverIO.Capabi
     }
 }
 
+// @wdio/xvfb keys, still honored so existing configs keep working.
+const RENAMED_KEYS = {
+    autoXvfb: 'displayServerEnabled',
+    xvfbAutoInstall: 'displayServerAutoInstall',
+    xvfbAutoInstallMode: 'displayServerAutoInstallMode',
+    xvfbAutoInstallCommand: 'displayServerAutoInstallCommand',
+} as const
+const IGNORED_KEYS = ['xvfbMaxRetries', 'xvfbRetryDelay'] as const
+const MIGRATION_GUIDE = 'https://webdriver.io/docs/v10-migration#virtual-displays-on-linux'
+
+function warnAboutXvfbKeys(config: WebdriverIO.Config): void {
+    const log = logger('@wdio/display-server')
+    for (const [xvfbKey, key] of Object.entries(RENAMED_KEYS)) {
+        if (config[xvfbKey as keyof typeof RENAMED_KEYS] !== undefined) {
+            log.warn(`\`${xvfbKey}\` is deprecated, use \`${key}\` instead. See ${MIGRATION_GUIDE}`)
+        }
+    }
+    for (const xvfbKey of IGNORED_KEYS) {
+        if (config[xvfbKey] !== undefined) {
+            log.warn(`\`${xvfbKey}\` is deprecated and has no effect, since display-server startup is not retried. See ${MIGRATION_GUIDE}`)
+        }
+    }
+}
+
 export function optionsFromConfig(config: WebdriverIO.Config): DisplayServerOptions {
+    warnAboutXvfbKeys(config)
     return {
-        enabled: config.displayServerEnabled,
+        enabled: config.displayServerEnabled ?? config.autoXvfb,
         displayServer: config.displayServer,
-        autoInstall: config.displayServerAutoInstall,
-        autoInstallMode: config.displayServerAutoInstallMode,
-        autoInstallCommand: config.displayServerAutoInstallCommand,
+        autoInstall: config.displayServerAutoInstall ?? config.xvfbAutoInstall,
+        autoInstallMode: config.displayServerAutoInstallMode ?? config.xvfbAutoInstallMode,
+        autoInstallCommand: config.displayServerAutoInstallCommand ?? config.xvfbAutoInstallCommand,
     }
 }
 

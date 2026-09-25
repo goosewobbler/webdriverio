@@ -97,3 +97,34 @@ An element remembers how it was queried, so re-fetching it — after a stale ele
 Under the hood a strict `$` issues a `findElements` request instead of `findElement`, since counting the matches is the only way to enforce the rule. This is a single round trip either way, but it is visible to custom services and WebDriver mocks that key off the `findElement` command.
 
 :::
+
+## Virtual displays on Linux
+
+`@wdio/xvfb` is replaced by `@wdio/display-server`. Instead of wrapping each worker in `xvfb-run`, the runner starts one display server for the whole run, before any service's `onPrepare` hook. It prefers Weston in headless mode and falls back to Xvfb. See [Headless & Xvfb with the Testrunner](/docs/headless-and-xvfb) for details.
+
+The options are renamed. The old names still work in v10 but log a deprecation warning:
+
+```diff
+- autoXvfb: false,
++ displayServerEnabled: false,
+- xvfbAutoInstall: true,
++ displayServerAutoInstall: true,
+- xvfbAutoInstallMode: 'sudo',
++ displayServerAutoInstallMode: 'sudo',
+- xvfbAutoInstallCommand: 'my-install-command',
++ displayServerAutoInstallCommand: 'my-install-command',
+```
+
+`xvfbMaxRetries` and `xvfbRetryDelay` have no effect and can be removed. Startup is no longer retried: if Weston fails to start, the runner tries Xvfb, and if neither starts, the run continues without a display.
+
+An `xvfbAutoInstallCommand` array ran through a shell in v9, so elements such as `&&` or `VAR=value` worked. Arrays now run without a shell under either option name, so use a string for shell syntax.
+
+Auto mode installs Weston before Xvfb, and a custom install command runs for whichever server is being installed. If you relied on `xvfbAutoInstall` or `xvfbAutoInstallCommand` to install Xvfb, add `displayServer: 'xvfb'` to keep that behavior.
+
+Other changes you may notice:
+
+- All workers share one display. In v9, each worker had a display of its own.
+- A host with only `WAYLAND_DISPLAY` set now counts as having a display. v9 checked only `DISPLAY` and ran workers under Xvfb there. v10 starts nothing and opens browser windows on your compositor. To run them under Xvfb as before, unset `WAYLAND_DISPLAY` and set `displayServer: 'xvfb'`.
+- The default screen is 1920x1080. v9 used the default of `xvfb-run`, which is 1280x1024 on Debian and Ubuntu. To keep that size, set `displayServerWidth: 1280` and `displayServerHeight: 1024`.
+- Under Weston, WebdriverIO adds `--ozone-platform=wayland` to the Chrome, Edge and Electron sessions it drives. Weston provides no `DISPLAY`, so if your tests or tools need X11, set `displayServer: 'xvfb'`.
+- If you called `@wdio/xvfb` directly, use `DisplayServerManager` from `@wdio/display-server` instead.

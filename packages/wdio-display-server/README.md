@@ -21,7 +21,7 @@ npm install @wdio/display-server
 
 **Most users don't need to install this package directly** — it's pulled in automatically by services that require a display server (e.g. `@wdio/local-runner`).
 
-### Enabling daemon mode
+### Daemon mode
 
 `@wdio/local-runner` calls `startDisplayDaemonFromConfig` during its
 `initialize()` hook — which runs **before** any service's `onPrepare`. This
@@ -31,8 +31,8 @@ ordering is the key property: by the time any service (e.g.
 via normal env propagation. The daemon outlives all workers and is stopped after
 the `onComplete` hook, so services can still use the display while they tear down.
 
-To opt in, set `displayServer` at the **config root** — no service registration
-needed:
+It's on by default. To configure it, set its options at the **config root**,
+with no service registration needed:
 
 ```ts
 // wdio.conf.ts
@@ -55,25 +55,29 @@ inherited env).
 > **Why config-root rather than a service?** WDIO services' `onPrepare` hooks
 > run in parallel via `Promise.all`, so a launcher-service can't guarantee its
 > daemon is ready before a sibling service forks its driver. Living in the
-> Runner's `initialize()` sidesteps that race entirely — see
-> `wdio-cli/src/launcher.ts:106` for the sequencing.
+> Runner's `initialize()`, which the launcher awaits before `onPrepare`,
+> sidesteps that race entirely.
 
 ### Manual Usage (Advanced)
 
 For custom integrations or non-WDIO environments:
 
 ```js
-import { displayServer } from "@wdio/display-server";
+import { DisplayServerManager } from "@wdio/display-server";
 
-// Initialize display server (Wayland preferred, Xvfb fallback)
-const ready = await displayServer.init();
+const manager = new DisplayServerManager();
 
-if (ready) {
-    console.log("Display server is ready for use");
-    const server = displayServer.getDisplayServer();
-    console.log(`Using: ${server.name}`); // 'wayland' or 'xvfb'
+// Starts Weston, or Xvfb if Weston is missing or fails; null if none starts
+const daemon = await manager.startDaemon();
+
+if (daemon) {
+    console.log(`Using: ${manager.getDisplayServer().name}`); // 'wayland' or 'xvfb'
+    console.log(daemon.env); // e.g. { DISPLAY: ':0', ... }
+    await daemon.stop();
 }
 ```
+
+`startDaemon()` doesn't change `process.env`, so pass `daemon.env` to the processes that need the display.
 
 ## API
 
@@ -95,7 +99,7 @@ interface DisplayServerOptions {
 #### Methods
 
 - **`shouldRun(): boolean`** - Check if display server should run
-- **`init(): Promise<boolean>`** - Initialize display server
+- **`init(): Promise<boolean>`** - Pick a display server, installing one if allowed, without starting it
 - **`getDisplayServer(): DisplayServer | null`** - Get the active display server instance
 - **`injectDisplayFlags(capabilities): void`** - Inject the display server's ozone flags into a worker's capabilities
 - **`startDaemon(options?): Promise<DisplayDaemon | null>`** - Start the first display server that comes up and return its daemon
@@ -178,7 +182,7 @@ The utility automatically detects when a display server is needed:
 | **`zypper`** | `zypper` | openSUSE | `xvfb-run` |
 | **`pacman`** | `pacman` | Arch Linux | `xorg-server-xvfb` |
 | **`apk`** | `apk` | Alpine Linux | `xvfb-run` |
-| **`xbps`** | `xbps-install` | Void Linux | `xvfb` |
+| **`xbps`** | `xbps-install` | Void Linux | `xvfb-run` |
 
 **Note**: Xvfb is not available on CentOS Stream 10 / RHEL 10+ (Wayland-only distributions).
 
@@ -222,9 +226,13 @@ When Wayland is active, the package automatically injects the Chrome flag:
 This enables Chrome/Edge to run under Weston headless.
 
 The flag is only injected for sessions WebdriverIO drives itself. If your config
-points `hostname`/`port` at a driver you start on the same machine, add
-`--ozone-platform=wayland` to your browser args; grid and cloud sessions need
-nothing, since their browsers run on the remote host's own display.
+sets `hostname`, `port` or another connection option for a Chrome, Edge or
+Electron driver that a service starts in `onPrepare`, set `displayServer: 'xvfb'`,
+which needs no browser flag. A fixed `--ozone-platform=wayland` breaks whenever
+the run doesn't end up on Weston. A driver started before WebdriverIO doesn't
+inherit the display at all.
+Grid and cloud sessions need nothing, since their browsers run on the remote
+host's own display.
 
 ## WebDriverIO Configuration
 
@@ -237,10 +245,9 @@ export const config = {
     capabilities: [{
         browserName: 'chrome',
         'goog:chromeOptions': {
-            args: ['--headless', '--no-sandbox']
+            args: ['--no-sandbox']
         }
-    }],
-    services: ['chromedriver']
+    }]
 };
 ```
 
@@ -259,7 +266,7 @@ export const config = {
     capabilities: [{
         browserName: 'chrome',
         'goog:chromeOptions': {
-            args: ['--headless', '--no-sandbox']
+            args: ['--no-sandbox']
         }
     }]
 };
@@ -282,11 +289,12 @@ async function runTests() {
         autoInstall: true
     });
 
-    // init() starts the display server as a daemon and publishes DISPLAY /
-    // WAYLAND_DISPLAY to process.env, so child processes inherit it.
-    const ready = await manager.init();
-    if (ready) {
-        await execAsync('node test-runner.js');
+    // null when a display already exists, off Linux, or when none could start
+    const daemon = await manager.startDaemon();
+    try {
+        await execAsync('node test-runner.js', { env: { ...process.env, ...daemon?.env } });
+    } finally {
+        await daemon?.stop();
     }
 }
 ```
@@ -300,19 +308,24 @@ const manager = new DisplayServerManager({
     displayServer: 'wayland'
 });
 
-const ready = await manager.init();
-if (!ready) {
-    throw new Error("Wayland not available and cannot be installed");
+const daemon = await manager.startDaemon();
+// startDaemon() also returns null when no display server is needed
+if (!daemon && manager.shouldRun()) {
+    throw new Error("Weston could not be started");
 }
 ```
 
 ## Logging
 
-The utility uses `@wdio/logger` with the namespace `@wdio/display-server`. Enable debug logging:
+The utility uses `@wdio/logger` with the namespace `@wdio/display-server`. Enable debug logging in your WDIO config:
 
-```bash
-DEBUG=@wdio/display-server npm run test
+```js
+export const config = {
+    logLevels: { '@wdio/display-server': 'debug' },
+}
 ```
+
+Outside the testrunner, set `WDIO_LOG_LEVEL=debug`.
 
 ## CentOS Stream 10 / RHEL 10+ Support
 
