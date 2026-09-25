@@ -373,7 +373,7 @@ export interface Testrunner extends Hooks, WebdriverIO, WebdriverIO.HookFunction
      * Which display server to use for headless testing on Linux.
      * - 'auto': Try Wayland first, then Xvfb fallback
      * - 'wayland': Force Wayland only
-     * - 'xvfb': Force Xvfb only (not available on CentOS Stream 10/RHEL 10+)
+     * - 'xvfb': Force Xvfb only (Enterprise Linux 10 has no Xvfb package)
      * @default 'auto'
      */
     displayServer?: 'auto' | 'wayland' | 'xvfb'

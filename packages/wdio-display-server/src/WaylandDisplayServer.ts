@@ -19,6 +19,21 @@ const execFileAsync = promisify(execFile)
 // externally-set-WAYLAND_DISPLAY fallback both use these and must not drift.
 export const WAYLAND_CHROME_FLAGS: string[] = ['--ozone-platform=wayland']
 
+// Exported so a test can run the dnf fallback through a real shell.
+export const WESTON_INSTALL_COMMANDS: Record<string, string> = {
+    apt: 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y weston',
+    // EL 10 has no Xvfb and ships Weston only in EPEL, which needs CRB. Older EL uses its own Xvfb instead.
+    // crb enable needs dnf-plugins-core, which epel-release only pulls in as a weak dependency.
+    dnf: 'dnf -y makecache && (dnf -y install weston || ([ "$(rpm -E "%{?rhel}")" -ge 10 ] 2>/dev/null && dnf -y install epel-release dnf-plugins-core && crb enable && dnf -y install weston))',
+    zypper: 'zypper --non-interactive refresh && zypper --non-interactive install -y weston',
+    // -Syu, not -Sy: Arch doesn't support partial upgrades, which can leave Weston needing a newer glibc.
+    pacman: 'pacman -Syu --noconfirm weston',
+    // Alpine splits the headless backend and the default shell into subpackages.
+    apk: 'apk update && apk add --no-cache weston weston-backend-headless weston-shell-desktop',
+    // xbps refuses to install anything while xbps itself is outdated.
+    xbps: 'xbps-install -Suy xbps && xbps-install -y weston',
+}
+
 export class WaylandDisplayServer implements DisplayServer {
     readonly name = 'wayland' as const
     private log = logger('@wdio/display-server:wayland')
@@ -36,15 +51,7 @@ export class WaylandDisplayServer implements DisplayServer {
     async install(options?: DisplayServerInstallOptions): Promise<boolean> {
         return installViaPackageManager({
             name: 'Weston',
-            packageCommands: {
-                apt: 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y weston',
-                dnf: 'dnf -y makecache && dnf -y install weston',
-                yum: 'yum -y makecache && yum -y install weston',
-                zypper: 'zypper --non-interactive refresh && zypper --non-interactive install -y weston',
-                pacman: 'pacman -Sy --noconfirm weston',
-                apk: 'apk update && apk add --no-cache weston',
-                xbps: 'xbps-install -Sy weston',
-            },
+            packageCommands: WESTON_INSTALL_COMMANDS,
             log: this.log,
             options,
         })

@@ -124,7 +124,6 @@ The package automatically selects the best display server:
 
 1. **Try Wayland first** (`weston --backend=headless`)
 2. **Fall back to Xvfb** if Weston isn't installed or fails to start
-3. **Skip Xvfb on CentOS Stream 10** (Xvfb not available in RHEL 10+)
 
 With `displayServerAutoInstall`, a missing server is installed only when no installed one starts, so an existing Xvfb is used before Weston is installed. If no display server starts, the run continues without one.
 
@@ -153,7 +152,7 @@ The utility automatically detects when a display server is needed:
 - **Wayland-first design**: Uses Weston headless backend on modern distributions
 - **Automatic fallback**: Falls back to Xvfb when Weston is unavailable or fails to start
 - **Cross-distro support**: Works on all major Linux distributions
-- **Universal package manager support**: Detects and uses `apt`, `dnf`, `yum`, `zypper`, `pacman`, `apk`, `xbps`
+- **Universal package manager support**: Detects and uses `apt`, `dnf`, `zypper`, `pacman`, `apk`, `xbps`
 - **Chrome Wayland flags**: Automatically injects `--ozone-platform=wayland` for Chrome/Edge
 - **Electron support**: Sets `ELECTRON_OZONE_PLATFORM_HINT=wayland`
 - **Custom installation**: Supports custom install commands and sudo modes
@@ -165,11 +164,10 @@ The utility automatically detects when a display server is needed:
 | Package Manager | Command | Distributions | Package Name |
 |----------------|---------|---------------|--------------|
 | **`apt`** | `apt-get` | Ubuntu, Debian, Pop!_OS, Mint | `weston` |
-| **`dnf`** | `dnf` | Fedora, Rocky Linux, AlmaLinux | `weston` |
-| **`yum`** | `yum` | CentOS, RHEL (legacy) | `weston` |
+| **`dnf`** | `dnf` | Fedora, CentOS Stream, RHEL, Rocky Linux, AlmaLinux | `weston` (from EPEL on Enterprise Linux 10, see below) |
 | **`zypper`** | `zypper` | openSUSE, SUSE Linux Enterprise | `weston` |
 | **`pacman`** | `pacman` | Arch Linux, Manjaro, EndeavourOS | `weston` |
-| **`apk`** | `apk` | Alpine Linux | `weston` |
+| **`apk`** | `apk` | Alpine Linux | `weston` `weston-backend-headless` `weston-shell-desktop` |
 | **`xbps`** | `xbps-install` | Void Linux | `weston` |
 
 ### Xvfb (Fallback)
@@ -177,14 +175,13 @@ The utility automatically detects when a display server is needed:
 | Package Manager | Command | Distributions | Package Name |
 |----------------|---------|---------------|--------------|
 | **`apt`** | `apt-get` | Ubuntu, Debian | `xvfb` |
-| **`dnf`** | `dnf` | Fedora, Rocky Linux | `xorg-x11-server-Xvfb` |
-| **`yum`** | `yum` | CentOS, RHEL (legacy) | `xorg-x11-server-Xvfb` |
+| **`dnf`** | `dnf` | Fedora, RHEL, Rocky Linux | `xorg-x11-server-Xvfb` |
 | **`zypper`** | `zypper` | openSUSE | `xvfb-run` |
 | **`pacman`** | `pacman` | Arch Linux | `xorg-server-xvfb` |
 | **`apk`** | `apk` | Alpine Linux | `xvfb-run` |
 | **`xbps`** | `xbps-install` | Void Linux | `xvfb-run` |
 
-**Note**: Xvfb is not available on CentOS Stream 10 / RHEL 10+ (Wayland-only distributions).
+**Note**: Enterprise Linux 10 has no Xvfb package. On Arch Linux, the install upgrades the whole system, since Arch doesn't support partial upgrades. On Void Linux, it updates `xbps` first, since xbps refuses to install packages while it is outdated.
 
 ## Environment Variables
 
@@ -327,21 +324,31 @@ export const config = {
 
 Outside the testrunner, set `WDIO_LOG_LEVEL=debug`.
 
-## CentOS Stream 10 / RHEL 10+ Support
+## Enterprise Linux 10
 
-CentOS Stream 10 and RHEL 10+ do not include Xvfb in their repositories due to the Wayland transition. This package:
+CentOS Stream 10, RHEL 10, AlmaLinux 10, Rocky Linux 10 and Oracle Linux 10 have no Xvfb package, so only Weston can run there. Weston comes from EPEL, which needs the CRB repository. With `displayServerAutoInstall`, the dnf install enables EPEL and CRB itself on CentOS Stream, AlmaLinux and Rocky Linux, and leaves both enabled, as EPEL recommends. On RHEL and Oracle Linux, enable EPEL and CodeReady Builder yourself first, as shown below. Earlier Enterprise Linux releases install Xvfb from their own repositories instead.
 
-1. **Detects CentOS Stream 10** automatically
-2. **Skips Xvfb** availability checks
-3. **Uses Wayland exclusively** on these distributions
-4. **Installs Weston** from EPEL repository if not present
-
-Example CentOS Stream 10 setup:
+To preinstall Weston on CentOS Stream, AlmaLinux or Rocky Linux 10:
 
 ```bash
-# Enable CRB and EPEL for Weston
-sudo dnf config-manager --set-enabled crb
-sudo dnf install -y epel-release
+sudo dnf install -y epel-release dnf-plugins-core
+sudo crb enable
+sudo dnf install -y weston
+```
+
+On RHEL 10, where CodeReady Builder needs an active subscription:
+
+```bash
+sudo subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+sudo dnf install -y weston
+```
+
+On Oracle Linux 10:
+
+```bash
+sudo dnf install -y oracle-epel-release-el10 dnf-plugins-core
+sudo dnf config-manager --enable ol10_codeready_builder
 sudo dnf install -y weston
 ```
 

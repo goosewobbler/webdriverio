@@ -147,17 +147,45 @@ Install `xvfb` instead to use Xvfb. For other distributions, use the package nam
 
 When `displayServerAutoInstall` is enabled, WebdriverIO installs a missing display server with your system package manager, Weston first. Installs are non-interactive. The following managers and packages are supported:
 
-| Package Manager | Command         | Distributions (examples)                               | Weston   | Xvfb                                            |
-|-----------------|-----------------|--------------------------------------------------------|----------|-------------------------------------------------|
-| apt             | `apt-get`       | Ubuntu, Debian, Pop!_OS, Mint, Elementary, Zorin, etc. | `weston` | `xvfb`                                          |
-| dnf             | `dnf`           | Fedora, Rocky Linux, AlmaLinux, Nobara, Bazzite, etc.  | `weston` | `xorg-x11-server-Xvfb` `xorg-x11-server-utils` |
-| yum             | `yum`           | CentOS, RHEL (legacy)                                  | `weston` | `xorg-x11-server-Xvfb` `xorg-x11-server-utils` |
-| zypper          | `zypper`        | openSUSE, SUSE Linux Enterprise                        | `weston` | `xvfb-run`                                      |
-| pacman          | `pacman`        | Arch Linux, Manjaro, EndeavourOS, CachyOS, etc.        | `weston` | `xorg-server-xvfb`                              |
-| apk             | `apk`           | Alpine Linux, PostmarketOS                             | `weston` | `xvfb-run`                                      |
-| xbps-install    | `xbps-install`  | Void Linux                                             | `weston` | `xvfb-run`                                      |
+| Package Manager | Command        | Distributions (examples)                                          | Weston                                                    | Xvfb                   |
+|-----------------|----------------|-------------------------------------------------------------------|-----------------------------------------------------------|------------------------|
+| apt             | `apt-get`      | Ubuntu, Debian, Pop!_OS, Mint, Elementary, Zorin, etc.            | `weston`                                                  | `xvfb`                 |
+| dnf             | `dnf`          | Fedora, CentOS Stream, RHEL, Rocky Linux, AlmaLinux, Nobara, etc. | `weston`                                                  | `xorg-x11-server-Xvfb` |
+| zypper          | `zypper`       | openSUSE, SUSE Linux Enterprise                                   | `weston`                                                  | `xvfb-run`             |
+| pacman          | `pacman`       | Arch Linux, Manjaro, EndeavourOS, CachyOS, etc.                   | `weston`                                                  | `xorg-server-xvfb`     |
+| apk             | `apk`          | Alpine Linux, PostmarketOS                                        | `weston` `weston-backend-headless` `weston-shell-desktop` | `xvfb-run`             |
+| xbps-install    | `xbps-install` | Void Linux                                                        | `weston`                                                  | `xvfb-run`             |
 
 With any other package manager the install fails, so install the display server yourself.
+
+Notes:
+- Enterprise Linux 10, such as CentOS Stream, RHEL, AlmaLinux, Rocky Linux and Oracle Linux, has no Xvfb package. Weston comes from EPEL, and the dnf install enables EPEL and CRB itself and leaves them enabled, except on RHEL and Oracle Linux, where you enable EPEL and CodeReady Builder first, as shown below. Earlier Enterprise Linux releases use Xvfb from their own repositories.
+- On Arch Linux, the install upgrades the whole system with `pacman -Syu`, since Arch doesn't support partial upgrades.
+- On Void Linux, the install updates `xbps` first, since xbps refuses to install packages while it is outdated.
+
+To preinstall Weston on CentOS Stream, AlmaLinux or Rocky Linux 10:
+
+```bash
+sudo dnf install -y epel-release dnf-plugins-core
+sudo crb enable
+sudo dnf install -y weston
+```
+
+On RHEL 10, where CodeReady Builder needs an active subscription:
+
+```bash
+sudo subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+sudo dnf install -y weston
+```
+
+On Oracle Linux 10:
+
+```bash
+sudo dnf install -y oracle-epel-release-el10 dnf-plugins-core
+sudo dnf config-manager --enable ol10_codeready_builder
+sudo dnf install -y weston
+```
 
 ## Troubleshooting
 
@@ -170,7 +198,7 @@ With any other package manager the install fails, so install the display server 
 
 - Chrome fails to start under Weston
   - If you start the driver yourself, see [Drivers you start yourself](#drivers-you-start-yourself).
-  - Otherwise, set `displayServer: 'xvfb'` to rule out Wayland.
+  - Otherwise, set `displayServer: 'xvfb'` to rule out Wayland. Enterprise Linux 10 has no Xvfb, so this doesn't apply there.
 
 - A display server starts although your CI provides one
   - The runner only checks `DISPLAY` and `WAYLAND_DISPLAY` in its own environment. Export the variable before WebdriverIO starts, or set `displayServerEnabled: false`.
