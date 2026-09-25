@@ -4,13 +4,20 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CI=true
 
+# Set per CI matrix cell. BREAK_WESTON deletes Weston's headless backend so it exits at startup.
+ARG WESTON=
+ARG XVFB=
+ARG BREAK_WESTON=
+
 RUN apt-get update -qq && \
     apt-get install -y \
         curl \
         ca-certificates \
         gnupg \
         sudo \
-        weston && \
+        ${WESTON:+weston} \
+        ${XVFB:+xvfb} && \
+    if [ -n "$BREAK_WESTON" ]; then test -n "$(find /usr/lib -name headless-backend.so -print -delete)"; fi && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

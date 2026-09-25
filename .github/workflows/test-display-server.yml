@@ -2,94 +2,70 @@ name: Display Server Tests
 
 on:
   workflow_call:
-    # Make this a reusable workflow, no value needed
-    # https://docs.github.com/en/actions/using-workflows/reusing-workflows
+    inputs:
+      full_matrix:
+        description: Run every distro and scenario. When false, cover the single-server Ubuntu runner scenarios, the Weston-to-Xvfb fallback, both auto-installs and Weston 10 on Debian 12.
+        type: boolean
+        default: true
 
 jobs:
-  display-server-e2e-tests:
+  resolve-matrix:
+    name: Resolve Display Server Matrix
     runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      include: ${{ steps.set.outputs.include }}
+    steps:
+      - id: set
+        name: Select distro matrix
+        shell: bash
+        run: |
+          # "runner" cells start the daemon through LocalRunner and drive a headed Chrome;
+          # "base" cells auto-install a server. Every cell asserts which server it ends up on.
+          pr='[
+            {"distro":"ubuntu","version":"24.04","scenario":"wayland-runner","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg WESTON=1","test":"runner","expect":"wayland"},
+            {"distro":"ubuntu","version":"24.04","scenario":"xvfb-runner","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg XVFB=1","test":"runner","expect":"xvfb"},
+            {"distro":"ubuntu","version":"24.04","scenario":"weston-fallback-runner","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg WESTON=1 --build-arg XVFB=1 --build-arg BREAK_WESTON=1","test":"runner","expect":"xvfb","expect_fallback":true},
+            {"distro":"ubuntu","version":"24.04","scenario":"xvfb-autoinstall","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg WESTON=1","test":"base","prefer":"xvfb","expect":"xvfb"},
+            {"distro":"ubuntu","version":"24.04","scenario":"wayland-autoinstall","dockerfile":"ubuntu.dockerfile","test":"base","expect":"wayland"},
+            {"distro":"debian","version":"12","scenario":"wayland-runner","dockerfile":"debian.dockerfile","build_args":"--build-context debian:13=docker-image://debian:12","test":"runner","expect":"wayland","legacy_weston":true}
+          ]'
+          rest='[
+            {"distro":"ubuntu","version":"24.04","scenario":"both-installed-runner","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg WESTON=1 --build-arg XVFB=1","test":"runner","expect":"wayland"},
+            {"distro":"ubuntu","version":"24.04","scenario":"prefer-xvfb-runner","dockerfile":"ubuntu.dockerfile","build_args":"--build-arg WESTON=1 --build-arg XVFB=1","test":"runner","prefer":"xvfb","expect":"xvfb"},
+            {"distro":"debian","version":"13","scenario":"wayland-runner","dockerfile":"debian.dockerfile","test":"runner","expect":"wayland"},
+            {"distro":"fedora","version":"43","scenario":"wayland-runner","dockerfile":"fedora.dockerfile","test":"runner","expect":"wayland"},
+            {"distro":"centos-stream","version":"10","scenario":"wayland-runner","dockerfile":"centos-stream.dockerfile","test":"runner","expect":"wayland"},
+            {"distro":"alpine","version":"3.22","scenario":"xvfb-runner","dockerfile":"alpine.dockerfile","test":"runner","expect":"xvfb"},
+            {"distro":"arch","version":"latest","scenario":"wayland-runner","dockerfile":"arch.dockerfile","test":"runner","expect":"wayland"},
+            {"distro":"suse","version":"16.0","scenario":"wayland-runner","dockerfile":"suse.dockerfile","test":"runner","expect":"wayland"},
+            {"distro":"void","version":"latest","scenario":"wayland-runner","dockerfile":"void.dockerfile","test":"runner","expect":"wayland"}
+          ]'
+          if [ "${{ inputs.full_matrix }}" = "true" ]; then
+            include=$(jq -c -n --argjson pr "$pr" --argjson rest "$rest" '$pr + $rest')
+          else
+            include=$(jq -c -n --argjson pr "$pr" '$pr')
+          fi
+          echo "include=$include" >> "$GITHUB_OUTPUT"
+
+  display-server-e2e-tests:
+    needs: [resolve-matrix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    env:
+      IMAGE: display-server-test:${{ matrix.distro }}-${{ matrix.version }}-${{ matrix.scenario }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Ubuntu scenarios
-          - distro: ubuntu
-            version: "24.04"
-            scenario: wayland-autoinstall
-            dockerfile: ubuntu-wayland-autoinstall.dockerfile
-            test: base
-          - distro: ubuntu
-            version: "24.04"
-            scenario: wayland
-            dockerfile: ubuntu-wayland.dockerfile
-            test: existing
-          - distro: ubuntu
-            version: "24.04"
-            scenario: xvfb-autoinstall
-            dockerfile: ubuntu-xvfb-autoinstall.dockerfile
-            test: base
-          - distro: ubuntu
-            version: "24.04"
-            scenario: xvfb
-            dockerfile: ubuntu-xvfb.dockerfile
-            test: existing
-          # The "runner" scenarios cover the daemon path end-to-end:
-          # LocalRunner.initialize() starts a real Xvfb/Weston daemon, sets
-          # DISPLAY / WAYLAND_DISPLAY on process.env, forks a worker, and a
-          # real Chrome session is created.
-          - distro: ubuntu
-            version: "24.04"
-            scenario: xvfb-runner
-            dockerfile: ubuntu-xvfb.dockerfile
-            test: runner
-          - distro: ubuntu
-            version: "24.04"
-            scenario: wayland-runner
-            dockerfile: ubuntu-wayland.dockerfile
-            test: runner
-
-          # Other distros - pre-installed only
-          - distro: fedora
-            version: "43"
-            scenario: wayland
-            dockerfile: fedora.dockerfile
-            test: existing
-          - distro: debian
-            version: "13"
-            scenario: wayland
-            dockerfile: debian.dockerfile
-            test: existing
-          - distro: centos-stream
-            version: "10"
-            scenario: wayland
-            dockerfile: centos-stream.dockerfile
-            test: existing
-          - distro: alpine
-            version: "3.22"
-            scenario: xvfb
-            dockerfile: alpine.dockerfile
-            test: existing
-          - distro: arch
-            version: "latest"
-            scenario: wayland
-            dockerfile: arch.dockerfile
-            test: existing
-          - distro: suse
-            version: "16.0"
-            scenario: wayland
-            dockerfile: suse.dockerfile
-            test: existing
-          - distro: void
-            version: "latest"
-            scenario: wayland
-            dockerfile: void.dockerfile
-            test: existing
+        include: ${{ fromJSON(needs.resolve-matrix.outputs.include) }}
 
     name: "Display Server Tests: ${{ matrix.distro }}:${{ matrix.version }} (${{ matrix.scenario }})"
 
     steps:
       - name: ⬇️ Checkout Code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 🧑‍🔧 Get Core Dependencies
         uses: ./.github/workflows/actions/get-core-dependencies
@@ -101,17 +77,26 @@ jobs:
           path: .
           filename: webdriverio-build.zip
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build test container
         run: |
           docker build \
+            ${{ matrix.build_args }} \
             -f e2e/wdio/display-server/docker/${{ matrix.dockerfile }} \
-            -t display-server-test:${{ matrix.distro }}-${{ matrix.scenario }} \
+            -t "$IMAGE" \
             e2e/wdio/display-server/docker/
 
+      - name: Check the image ships Weston older than 12
+        if: matrix.legacy_weston
+        # The --build-context override only applies while debian.dockerfile says FROM debian:13.
+        run: |
+          version=$(docker run --rm "$IMAGE" weston --version)
+          echo "$version"
+          major=${version#weston }
+          [ "${major%%.*}" -lt 12 ]
+
       - name: Run Display Server E2E tests in container
+        # A step timeout fails the job, so the log steps below still run; the job timeout cancels it.
+        timeout-minutes: 15
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
@@ -119,7 +104,9 @@ jobs:
             -e CI=true \
             -e NODE_ENV=test \
             -e WDIO_LOG_LEVEL=debug \
-            display-server-test:${{ matrix.distro }}-${{ matrix.scenario }} \
+            -e DISPLAY_SERVER_PREFERENCE=${{ matrix.prefer }} \
+            -e EXPECTED_DISPLAY_SERVER=${{ matrix.expect }} \
+            "$IMAGE" \
             bash -c "
               set -e
               set -o pipefail
@@ -134,27 +121,23 @@ jobs:
               cd e2e && pnpm test:display-server:${{ matrix.test }}
             "
 
+      - name: Check Weston failed before the Xvfb fallback
+        if: matrix.expect_fallback
+        # The end state matches xvfb-runner, so only the launcher log shows Weston was tried first.
+        run: grep -F "wayland failed to start" e2e/wdio/display-server/logs/wdio.log
+
       - name: Display logs on failure
         if: failure()
         run: |
           echo "=== Test failed, displaying diagnostic logs ==="
 
-          if [ -f e2e/wdio/display-server/logs/wdio.log ]; then
-            echo "=== WDIO Main Log ==="
-            cat e2e/wdio/display-server/logs/wdio.log
-          fi
+          for log in e2e/wdio/display-server/logs/*.log; do
+            [ -f "$log" ] || continue
+            echo "=== $log ==="
+            cat "$log"
+          done
 
-          if [ -f e2e/wdio/display-server/logs/wdio-0-0.log ]; then
-            echo "=== WDIO Worker Log ==="
-            cat e2e/wdio/display-server/logs/wdio-0-0.log
-          fi
-
-          if [ -f e2e/wdio/display-server/logs/wdio-0-0-chromedriver.log ]; then
-            echo "=== Chromedriver Log ==="
-            cat e2e/wdio/display-server/logs/wdio-0-0-chromedriver.log
-          fi
-
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: display-server-e2e-logs-${{ matrix.distro }}-${{ matrix.version }}-${{ matrix.scenario }}

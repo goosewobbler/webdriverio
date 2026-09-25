@@ -10,9 +10,9 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
  * launches Chrome *without* --headless — so the daemon-backed display is
  * required for the session to succeed.
  *
- * Distinct from wdio.conf.ts which runs the existing/base specs with
- * `displayServerEnabled: false` (those tests drive DisplayServerManager directly
- * and use a --headless Chrome that doesn't need the display).
+ * Distinct from wdio.conf.ts, which runs base-install.e2e.ts with
+ * `displayServerEnabled: false`: that spec installs and starts a display server
+ * through DisplayServerManager itself.
  */
 export const config: WebdriverIO.Config = {
     specs: [
@@ -47,7 +47,8 @@ export const config: WebdriverIO.Config = {
     // WAYLAND_DISPLAY in the container, it spins up Xvfb/Weston and the worker
     // inherits the env Chrome needs.
     displayServerEnabled: true,
-    displayServer: 'auto',
+    // Set per CI matrix cell.
+    displayServer: (process.env.DISPLAY_SERVER_PREFERENCE || 'auto') as WebdriverIO.Config['displayServer'],
 
     reporters: ['spec'],
 

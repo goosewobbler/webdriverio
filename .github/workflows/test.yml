@@ -2,7 +2,8 @@
 #
 # Pull requests detect which areas changed and skip expensive suites that
 # cannot be affected (display-server distro matrix, component tests, docs site build,
-# etc.). PRs also use a reduced OS × Node matrix. Pushes to main/v10 (and PRs
+# etc.). PRs also use a reduced OS × Node matrix and run the display-server tests
+# on Ubuntu and Debian 12 only. Pushes to main/v10 (and PRs
 # that touch CI config) still run the full matrix so merge coverage stays
 # complete.
 #
@@ -172,6 +173,8 @@ jobs:
     needs: [changes, build_core, static_code_analysis]
     if: needs.changes.outputs.run-all == 'true' || needs.changes.outputs.display_server == 'true'
     uses: ./.github/workflows/test-display-server.yml
+    with:
+      full_matrix: ${{ needs.changes.outputs.run-all == 'true' }}
 
   # Stable required check. Individual matrix cells are skipped on most PRs;
   # this job succeeds when every job that *did* run succeeded (skipped is OK).

@@ -1,3 +1,4 @@
+# CI also builds this on debian:12, via --build-context, to cover Weston 10's legacy switches.
 FROM debian:13
 
 # Avoid interactive prompts during installation

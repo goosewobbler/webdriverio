@@ -18,6 +18,17 @@ describe('display server through local runner', () => {
         if (DISPLAY) {
             expect(DISPLAY).toMatch(/^:\d+$/)
         }
+        // Set per CI matrix cell, so a silent fallback to the other server fails the cell.
+        const expected = process.env.EXPECTED_DISPLAY_SERVER
+        if (expected === 'wayland') {
+            expect(WAYLAND_DISPLAY).toBeTruthy()
+            expect(DISPLAY).toBeUndefined()
+        } else if (expected === 'xvfb') {
+            expect(DISPLAY).toBeTruthy()
+            expect(WAYLAND_DISPLAY).toBeUndefined()
+        } else if (expected) {
+            throw new Error(`Unknown EXPECTED_DISPLAY_SERVER: ${expected}`)
+        }
     })
 
     it('starts a real Chrome session backed by the display server', async () => {
