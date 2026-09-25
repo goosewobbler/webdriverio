@@ -30,6 +30,8 @@ The runner only starts a display server when all of these are true:
 
 If a display already exists, the runner uses it and starts nothing.
 
+If all your browsers run on a cloud service or a remote grid, nothing local needs a display, so set `displayServerEnabled: false`.
+
 ### Which display server is used
 
 With the default `displayServer: 'auto'`, the runner tries Weston first and Xvfb second. Installed servers are tried before anything is installed, so an existing Xvfb is used instead of installing Weston. If no display server starts, the runner logs a warning and the run continues without one.

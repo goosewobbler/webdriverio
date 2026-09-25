@@ -52,6 +52,9 @@ when `DISPLAY` / `WAYLAND_DISPLAY` is already set (e.g. by `xvfb-run` at the
 CI level — in which case downstream children already see a display via the
 inherited env).
 
+If all your browsers run on a cloud service or a remote grid, nothing local
+needs a display, so set `displayServerEnabled: false`.
+
 > **Why config-root rather than a service?** WDIO services' `onPrepare` hooks
 > run in parallel via `Promise.all`, so a launcher-service can't guarantee its
 > daemon is ready before a sibling service forks its driver. Living in the
