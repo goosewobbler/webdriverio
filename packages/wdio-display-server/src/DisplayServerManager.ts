@@ -6,8 +6,8 @@ import type { DisplayDaemon, DisplayDaemonOptions, DisplayServer, DisplayServerO
 import { WaylandDisplayServer, WAYLAND_CHROME_FLAGS } from './WaylandDisplayServer.js'
 import { XvfbDisplayServer } from './XvfbDisplayServer.js'
 
-// A worker's capabilities come in three shapes: single ({ browserName }), vendor-keyed
-// ({ 'goog:chromeOptions' }), and multiremote ({ browserA: {...} }).
+// A worker's capabilities come in four shapes: single ({ browserName }), vendor-keyed
+// ({ 'goog:chromeOptions' }), W3C ({ alwaysMatch, firstMatch }), and multiremote ({ browserA: {...} }).
 
 type CapsRoot = WebdriverIO.Capabilities | Record<string, WebdriverIO.Capabilities | { capabilities: WebdriverIO.Capabilities }>
 
@@ -35,20 +35,30 @@ function extractCapabilitiesFromBrowserConfig(
     return browserConfig as WebdriverIO.Capabilities
 }
 
+function isW3CCapability(caps: Record<string, unknown>): boolean {
+    return isCapabilityObject(caps.alwaysMatch)
+}
+
+// W3C capabilities keep the browser's settings in alwaysMatch, the part every session gets
+// (a standalone worker sends nothing else, see @wdio/runner's sanitizeCaps), so flags go there.
+function unwrapW3C(caps: Record<string, unknown>): Record<string, unknown> {
+    return isW3CCapability(caps) ? caps.alwaysMatch as Record<string, unknown> : caps
+}
+
 function forEachBrowserCapability(root: unknown, visit: (cap: WebdriverIO.Capabilities) => void): void {
     if (!isCapabilityObject(root)) {
         return
     }
-    const caps = root as CapsRoot
-    if (isSingleCapability(caps)) {
-        visit(caps)
+    if (isW3CCapability(root) || isSingleCapability(root as CapsRoot)) {
+        visit(unwrapW3C(root) as WebdriverIO.Capabilities)
         return
     }
-    // Multiremote map: { browserA: { capabilities } | capabilities, ... }
+    const caps = root as CapsRoot
+    // Multiremote map: { browserA: { capabilities } | capabilities, ... }, where an instance may itself be W3C
     for (const browserConfig of Object.values(caps)) {
         const cap = extractCapabilitiesFromBrowserConfig(browserConfig)
         if (isCapabilityObject(cap)) {
-            visit(cap)
+            visit(unwrapW3C(cap) as WebdriverIO.Capabilities)
         }
     }
 }

@@ -435,6 +435,45 @@ test('skips display flag injection when the capability itself targets a remote d
     expect(mockInject).not.toHaveBeenCalled()
 })
 
+test('skips display flag injection when W3C capabilities target a remote driver in alwaysMatch', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+
+    await runner.run(runPayload({ alwaysMatch: { browserName: 'chrome', hostname: 'selenium-grid.internal', port: 4444 }, firstMatch: [{}] } as never))
+
+    expect(mockInject).not.toHaveBeenCalled()
+})
+
+test('ignores connection options at the root of W3C capabilities, as the worker does', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+
+    const caps = { alwaysMatch: { browserName: 'chrome' }, firstMatch: [{}], hostname: 'selenium-grid.internal' }
+
+    await runner.run(runPayload(caps as never))
+
+    expect(mockInject).toHaveBeenCalledWith(caps)
+})
+
+test('tolerates a worker without capabilities', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+
+    await runner.run(runPayload(undefined as never))
+
+    expect(mockInject).toHaveBeenCalledWith(undefined)
+})
+
+test('still injects display flags into local W3C capabilities', async () => {
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+    const mockInject = stubInjection(runner)
+    const caps = { alwaysMatch: { browserName: 'chrome' }, firstMatch: [{}] }
+
+    await runner.run(runPayload(caps as never))
+
+    expect(mockInject).toHaveBeenCalledWith(caps)
+})
+
 test('still injects display flags when the config spells out the local defaults', async () => {
     const runner = new LocalRunner({} as never, {
         displayServerEnabled: true,

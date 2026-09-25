@@ -61,8 +61,11 @@ export default class LocalRunner {
     async run({ command, args, ...workerOptions }: RunArgs) {
         // Per-worker `--ozone-platform=...` injection. A remote driver's browser
         // doesn't run on this display; like the worker, let a capability's
-        // connection settings override the config's.
-        if (definesRemoteDriver({ ...this.config, ...workerOptions.caps })) {
+        // connection settings override the config's. For W3C capabilities the worker
+        // reads those settings from alwaysMatch.
+        const caps = (workerOptions.caps ?? {}) as Record<string, unknown>
+        const connection = caps.alwaysMatch && typeof caps.alwaysMatch === 'object' ? caps.alwaysMatch : caps
+        if (definesRemoteDriver({ ...this.config, ...connection })) {
             log.debug(`Remote driver configured for worker ${workerOptions.cid}; leaving capabilities untouched`)
         } else {
             this.displayServerManager.injectDisplayFlags(workerOptions.caps)

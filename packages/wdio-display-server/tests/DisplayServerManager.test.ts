@@ -220,6 +220,34 @@ describe('DisplayServerManager (gap coverage)', () => {
     })
 
     describe('injectDisplayFlags (per-worker)', () => {
+        describe('W3C capabilities', () => {
+            it('injects into alwaysMatch, the part WebdriverIO sends to the driver', async () => {
+                mockXvfb.isAvailable.mockResolvedValue(true)
+                const mgr = new DisplayServerManager({ displayServer: 'xvfb' })
+                await mgr.init()
+                const caps = { alwaysMatch: { browserName: 'chrome' }, firstMatch: [{}] } as Record<string, any>
+
+                mgr.injectDisplayFlags(caps as never)
+
+                expect(caps.alwaysMatch['goog:chromeOptions'].args).toEqual(['--ozone-platform=x11'])
+                expect(caps.firstMatch).toEqual([{}])
+            })
+
+            it('handles a multiremote instance whose capabilities are W3C', async () => {
+                mockXvfb.isAvailable.mockResolvedValue(true)
+                const mgr = new DisplayServerManager({ displayServer: 'xvfb' })
+                await mgr.init()
+                const caps = {
+                    browserA: { capabilities: { alwaysMatch: { browserName: 'chrome' }, firstMatch: [{}] } },
+                } as Record<string, any>
+
+                mgr.injectDisplayFlags(caps as never)
+
+                expect(caps.browserA.capabilities.alwaysMatch['goog:chromeOptions'].args).toEqual(['--ozone-platform=x11'])
+                expect(caps.browserA.capabilities.firstMatch).toEqual([{}])
+            })
+        })
+
         it('does nothing when no display server is active', () => {
             const mgr = new DisplayServerManager()
             const caps = { 'goog:chromeOptions': { args: [] } } as WebdriverIO.Capabilities
