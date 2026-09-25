@@ -20,7 +20,7 @@ On Linux, when no display is available, the testrunner starts a virtual display 
 
 ## How it works
 
-The runner starts one display server before any service's `onPrepare` hook and sets `WAYLAND_DISPLAY` or `DISPLAY` on `process.env`, along with matching `GDK_BACKEND` and `ELECTRON_OZONE_PLATFORM_HINT` values. Workers inherit them, and so do drivers and apps that services start in `onPrepare`. The display is stopped after the `onComplete` hook, so services can still use it while they tear down.
+The runner starts one display server before any service's `onPrepare` hook and sets `WAYLAND_DISPLAY` or `DISPLAY` on `process.env`, along with matching `GDK_BACKEND` and `ELECTRON_OZONE_PLATFORM_HINT` values. Under Weston it also sets `XDG_RUNTIME_DIR` to the display server's private directory for the run, replacing any value you had. Workers inherit them, and so do drivers and apps that services start in `onPrepare`. The display is stopped after the `onComplete` hook, so services can still use it while they tear down.
 
 The runner only starts a display server when all of these are true:
 
