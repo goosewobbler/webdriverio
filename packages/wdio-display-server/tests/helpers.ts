@@ -1,4 +1,4 @@
-import { vi, type Mock } from 'vitest'
+import { vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
@@ -10,6 +10,7 @@ import type { DisplayServerManager } from '../src/DisplayServerManager.js'
  * lifecycle by emitting 'exit'/'error' and asserting on the spied `kill`.
  */
 export class FakeProc extends EventEmitter {
+    pid: number | undefined = 4242
     killed = false
     exitCode: number | null = null
     signalCode: NodeJS.Signals | null = null
@@ -65,6 +66,27 @@ export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 
         setImmediate(() => fd3.write(`${display}\n`))
     }
     return proc
+}
+
+/** Removes the process 'exit' listeners a test's daemons leave behind; `emitExit` runs only those. */
+export const trackExitListeners = () => {
+    let before: NodeJS.ExitListener[] = []
+    const added = () => process.listeners('exit').filter((listener) => !before.includes(listener))
+    beforeEach(() => {
+        before = process.listeners('exit')
+    })
+    afterEach(() => {
+        for (const listener of added()) {
+            process.off('exit', listener)
+        }
+    })
+    return {
+        emitExit: () => {
+            for (const listener of added()) {
+                listener(0)
+            }
+        },
+    }
 }
 
 // Queue execAsync rejections for the package managers probed before `pm`, then a

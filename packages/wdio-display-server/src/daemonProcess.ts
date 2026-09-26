@@ -59,6 +59,22 @@ export async function runDaemon({
         : ['ignore', 'ignore', 'pipe']
     const proc = spawn(command, args, { stdio, ...(spawnEnv ? { env: spawnEnv } : {}) })
 
+    let syncDone = false
+    const stopSync = (): void => {
+        if (syncDone) {
+            return
+        }
+        syncDone = true
+        process.off('exit', stopSync)
+        try {
+            if (proc.pid !== undefined && proc.exitCode === null && proc.signalCode === null) { // a failed spawn has no pid, and kill() would then signal the whole process group
+                proc.kill('SIGKILL') // an 'exit' listener can't wait for a graceful SIGTERM exit
+            }
+        } catch { /* process may already be gone */ }
+        cleanupSync?.()
+    }
+    process.once('exit', stopSync) // at spawn, so a process exiting mid-startup doesn't orphan the child
+
     // Keep only the tail of stderr to bound memory.
     let stderr = ''
     proc.stderr?.on('data', (chunk) => {
@@ -103,6 +119,17 @@ export async function runDaemon({
         })
     }
 
+    const teardown = async (): Promise<void> => {
+        try {
+            await terminate()
+            if (!syncDone) {
+                await cleanup?.()
+            }
+        } finally {
+            process.off('exit', stopSync) // only now, so an exit mid-teardown still kills the child
+        }
+    }
+
     const readyWait = new AbortController() // ends the readiness wait once the race settles, so a crash doesn't leave it running
     let env: Record<string, string>
     try {
@@ -121,8 +148,7 @@ export async function runDaemon({
     } catch (err) {
         proc.removeListener('exit', onExit)
         proc.removeListener('error', onError)
-        await terminate()
-        await cleanup?.()
+        await teardown()
         const tail = stderr.trim()
         throw tail ? new Error(`${(err as Error).message}\n${tail}`, { cause: err }) : err
     } finally {
@@ -131,37 +157,17 @@ export async function runDaemon({
     proc.removeListener('exit', onExit)
     proc.removeListener('error', onError)
 
-    // syncDone short-circuits stop() so a prior stopSync() isn't undone by a redundant
-    // async cleanup, while still letting stopSync() run during an in-flight stop() —
-    // otherwise an exit mid-stop() would orphan the child.
     let stopPromise: Promise<void> | null = null
-    let syncDone = false
     const stop = (): Promise<void> => {
-        if (syncDone) {
+        // After stopSync() there is nothing left to stop; an in-flight stop() is still handed back.
+        if (!stopPromise && syncDone) {
             return Promise.resolve()
         }
-        if (stopPromise) {
-            return stopPromise
-        }
-        stopPromise = (async () => {
+        stopPromise ??= (async () => {
             log.info(`Stopping ${label} daemon`)
-            await terminate()
-            await cleanup?.()
+            await teardown()
         })()
         return stopPromise
-    }
-
-    const stopSync = (): void => {
-        if (syncDone) {
-            return
-        }
-        syncDone = true
-        try {
-            if (proc.exitCode === null && proc.signalCode === null) {
-                proc.kill('SIGKILL')
-            }
-        } catch { /* process may already be gone */ }
-        cleanupSync?.()
     }
 
     return { env, stop, stopSync }
