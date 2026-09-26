@@ -1,0 +1,21 @@
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
+/** Shim `name` on PATH that execs `stubPath` under this node, so signals and fds reach the stub directly. */
+export async function installStubOnPath(name: string, stubPath: string): Promise<() => Promise<void>> {
+    const binDir = await mkdtemp(path.join(os.tmpdir(), `wdio-${name.toLowerCase()}-stub-`))
+    const shim = path.join(binDir, name)
+    await writeFile(shim, `#!/bin/sh\nexec "${process.execPath}" "${stubPath}" "$@"\n`)
+    await chmod(shim, 0o755)
+    const originalPath = process.env.PATH
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ''}`
+    return async () => {
+        if (originalPath === undefined) {
+            delete process.env.PATH
+        } else {
+            process.env.PATH = originalPath
+        }
+        await rm(binDir, { recursive: true, force: true }).catch(() => {})
+    }
+}

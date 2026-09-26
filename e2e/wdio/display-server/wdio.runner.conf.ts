@@ -5,10 +5,10 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url))
 
 /**
  * Exercises the full LocalRunner ↔ startDisplayDaemonFromConfig integration:
- * the runner starts a real Xvfb/Weston daemon in `initialize()`, publishes
- * DISPLAY / WAYLAND_DISPLAY on `process.env`, then forks a wdio worker that
- * launches Chrome *without* --headless — so the daemon-backed display is
- * required for the session to succeed.
+ * the runner starts a real Xvfb/Weston daemon in `initialize()` and publishes its
+ * env on `process.env` (with an existing Wayland display it only sets the session
+ * vars), then forks a wdio worker that launches Chrome *without* --headless, so
+ * the display is required for the session to succeed.
  *
  * Distinct from wdio.conf.ts which runs the existing/base specs with
  * `displayServerEnabled: false` (those tests drive DisplayServerManager directly
@@ -43,9 +43,7 @@ export const config: WebdriverIO.Config = {
 
     runner: 'local',
 
-    // Let the local runner manage the display server: with no DISPLAY /
-    // WAYLAND_DISPLAY in the container, it spins up Xvfb/Weston and the worker
-    // inherits the env Chrome needs.
+    // Let the local runner start Xvfb/Weston when the container has no display.
     displayServerEnabled: true,
     displayServer: 'auto',
 

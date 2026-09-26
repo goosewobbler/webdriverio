@@ -17,7 +17,7 @@ export interface DisplayDaemonOptions {
 }
 
 export interface DisplayDaemon {
-    /** Env downstream children need, e.g. { DISPLAY: ':99' } or { WAYLAND_DISPLAY, XDG_RUNTIME_DIR }. */
+    /** Env downstream children need, e.g. { DISPLAY: ':0' } or { WAYLAND_DISPLAY, XDG_RUNTIME_DIR }. */
     env: Record<string, string>
 
     /** Safe to call multiple times. */
@@ -38,8 +38,6 @@ export interface DisplayServer {
 
     /** @returns true if the install succeeded or the server was already available. */
     install(options?: DisplayServerInstallOptions): Promise<boolean>
-
-    getChromeFlags(): string[]
 
     /**
      * The launcher starts this so children spawned in a service `onPrepare`

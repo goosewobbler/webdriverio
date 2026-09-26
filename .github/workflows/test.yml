@@ -65,6 +65,7 @@ jobs:
             display_server:
               - 'packages/wdio-display-server/**'
               - 'packages/wdio-local-runner/**'
+              - 'packages/wdio-utils/src/node/startWebDriver.ts' # the Wayland flag rule
               - 'e2e/wdio/display-server/**'
             # Core product / test code. Display-server and browser-runner trees are
             # excluded so those dedicated suites can run on their own.
