@@ -1,7 +1,5 @@
 /**
  * Test stub standing in for the `weston` compositor, driven by WDIO_STUB_MODE.
- * Used only by WaylandDisplayServer real-process lifecycle tests (it is placed on
- * PATH as `weston`); it is not shipped.
  *
  * Modes:
  * - 'ready' (default): create the socket the parent polls for, then idle until
