@@ -48,7 +48,7 @@ jobs:
             dockerfile: ubuntu-wayland.dockerfile
             test: runner
           # A Weston that WebdriverIO doesn't start, with XDG_SESSION_TYPE=tty as over SSH: the runner
-          # starts nothing, so Chrome only reaches Wayland through the session env the runner sets.
+          # starts nothing and only sets the session env, which the log check below confirms.
           - distro: ubuntu
             version: "24.04"
             scenario: existing-wayland-runner

@@ -37,6 +37,7 @@ export const LANE_FILTERS: LaneFilters = {
     display_server: [
         'packages/wdio-display-server/**',
         'packages/wdio-local-runner/**',
+        'packages/wdio-utils/src/node/startWebDriver.ts', // the Wayland flag rule
         'e2e/wdio/display-server/**'
     ],
     code: [
