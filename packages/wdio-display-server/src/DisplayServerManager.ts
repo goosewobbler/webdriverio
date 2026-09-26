@@ -1,24 +1,54 @@
 import os from 'node:os'
 import logger from '@wdio/logger'
 import type { Options } from '@wdio/types'
-import type { DisplayServer, DisplayServerOptions } from './types.js'
+import type { DisplayDaemon, DisplayDaemonOptions, DisplayServer, DisplayServerOptions } from './types.js'
 import { WaylandDisplayServer } from './WaylandDisplayServer.js'
 import { XvfbDisplayServer } from './XvfbDisplayServer.js'
-import { executeWithRetry } from './utils.js'
 
-export function optionsFromConfig(config: Options.Testrunner): DisplayServerOptions {
-    return {
-        enabled: config.displayServerEnabled,
-        displayServer: config.displayServer,
-        autoInstall: config.displayServerAutoInstall,
-        autoInstallMode: config.displayServerAutoInstallMode,
-        autoInstallCommand: config.displayServerAutoInstallCommand,
+// v9 config keys, still honored so existing configs keep working.
+const RENAMED_KEYS = {
+    autoXvfb: 'displayServerEnabled',
+    xvfbAutoInstall: 'displayServerAutoInstall',
+    xvfbAutoInstallMode: 'displayServerAutoInstallMode',
+    xvfbAutoInstallCommand: 'displayServerAutoInstallCommand',
+} as const
+type RenamedKey = keyof typeof RENAMED_KEYS
+const IGNORED_KEYS = ['xvfbMaxRetries', 'xvfbRetryDelay'] as const
+const MIGRATION_GUIDE = 'https://webdriver.io/docs/v10-migration#virtual-displays-on-linux'
+
+function warnAboutXvfbKeys(config: Options.Testrunner, preferringXvfb: boolean): void {
+    const log = logger('@wdio/display-server')
+    for (const [xvfbKey, key] of Object.entries(RENAMED_KEYS)) {
+        if (config[xvfbKey as RenamedKey] === undefined) {
+            continue
+        }
+        log.warn(config[key] === undefined
+            ? `\`${xvfbKey}\` is deprecated, use \`${key}\` instead. See ${MIGRATION_GUIDE}`
+            : `\`${xvfbKey}\` is deprecated and ignored, since \`${key}\` is set. See ${MIGRATION_GUIDE}`)
+    }
+    for (const xvfbKey of IGNORED_KEYS) {
+        if (config[xvfbKey] !== undefined) {
+            log.warn(`\`${xvfbKey}\` is deprecated and has no effect, since display-server startup is not retried. See ${MIGRATION_GUIDE}`)
+        }
+    }
+    if (preferringXvfb) {
+        log.warn(`Preferring Xvfb, as v9 did, because the config sets v9 display keys; set \`displayServer\` to choose. See ${MIGRATION_GUIDE}`)
     }
 }
 
-// Daemon startup can fail transiently on spawn or readiness.
-const DAEMON_START_MAX_RETRIES = 3
-const DAEMON_START_RETRY_DELAY_MS = 1000
+export function optionsFromConfig(config: Options.Testrunner): DisplayServerOptions {
+    const usesRenamedKeys = Object.entries(RENAMED_KEYS)
+        .some(([xvfbKey, key]) => config[xvfbKey as RenamedKey] !== undefined && config[key] === undefined)
+    const options: DisplayServerOptions = {
+        enabled: config.displayServerEnabled ?? config.autoXvfb,
+        displayServer: config.displayServer ?? (usesRenamedKeys ? 'xvfb' : undefined),
+        autoInstall: config.displayServerAutoInstall ?? config.xvfbAutoInstall,
+        autoInstallMode: config.displayServerAutoInstallMode ?? config.xvfbAutoInstallMode,
+        autoInstallCommand: config.displayServerAutoInstallCommand ?? config.xvfbAutoInstallCommand,
+    }
+    warnAboutXvfbKeys(config, usesRenamedKeys && config.displayServer === undefined && options.enabled !== false)
+    return options
+}
 
 export class DisplayServerManager {
     #enabled: boolean
@@ -29,6 +59,8 @@ export class DisplayServerManager {
     #force: boolean
     #log: ReturnType<typeof logger>
     #displayServer: DisplayServer | null = null
+    #wayland = new WaylandDisplayServer()
+    #xvfb = new XvfbDisplayServer()
 
     constructor(options: DisplayServerOptions = {}) {
         this.#enabled = options.enabled ?? true
@@ -41,18 +73,24 @@ export class DisplayServerManager {
     }
 
     shouldRun(): boolean {
+        return this.#skipReason() === undefined
+    }
+
+    // Why no display server is needed, or undefined when one is.
+    #skipReason(): string | undefined {
         if (!this.#enabled) {
-            return false
+            return 'displayServerEnabled is false'
         }
         if (this.#force) {
-            return true
+            return undefined
         }
-
         if (os.platform() !== 'linux') {
-            return false
+            return 'not on Linux'
         }
-
-        return !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY
+        if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+            return 'DISPLAY or WAYLAND_DISPLAY is already set'
+        }
+        return undefined
     }
 
     async init(): Promise<boolean> {
@@ -64,97 +102,80 @@ export class DisplayServerManager {
             return true
         }
 
-        if (!this.shouldRun()) {
-            this.#log.info('Display server not needed on current platform')
+        const skipReason = this.#skipReason()
+        if (skipReason) {
+            this.#log.info(`No display server needed: ${skipReason}`)
             return false
         }
 
-        this.#log.info('Display server should run, selecting implementation...')
+        for await (const displayServer of this.#candidates()) {
+            this.#displayServer = displayServer
+            this.#log.info(`${displayServer.name} display server is ready for use`)
+            return true
+        }
+        this.#log.warn('No display server available; continuing without virtual display')
+        return false
+    }
 
-        try {
-            const displayServer = await this.#selectDisplayServer()
-
-            if (displayServer) {
+    /** Starts the first candidate that comes up and makes it the active server; null when none is needed or none starts. */
+    async startDaemon(options?: DisplayDaemonOptions): Promise<DisplayDaemon | null> {
+        const skipReason = this.#skipReason()
+        if (skipReason) {
+            this.#log.info(`No display server needed: ${skipReason}`)
+            return null
+        }
+        for await (const displayServer of this.#candidates()) {
+            try {
+                const daemon = await displayServer.startDaemon(options)
                 this.#displayServer = displayServer
-                this.#log.info(`${displayServer.name} display server is ready for use`)
-                return true
+                this.#log.info(`${displayServer.name} display server started`)
+                return daemon
+            } catch (error) {
+                this.#log.warn(`${displayServer.name} failed to start: ${error instanceof Error ? error.message : String(error)}`)
             }
-
-            this.#log.warn('No display server available; continuing without virtual display')
-            return false
-        } catch (error) {
-            this.#log.error('Failed to setup display server:', error)
-            throw error
         }
-    }
-
-    async #selectDisplayServer(): Promise<DisplayServer | null> {
-        const wayland = new WaylandDisplayServer()
-        const xvfb = new XvfbDisplayServer()
-
-        if (this.#displayServerPreference === 'wayland') {
-            this.#log.info('Wayland display server requested')
-            return this.#tryDisplayServer(wayland)
-        }
-
-        if (this.#displayServerPreference === 'xvfb') {
-            this.#log.info('Xvfb display server requested')
-            return this.#tryDisplayServer(xvfb)
-        }
-
-        this.#log.info('Auto mode: Trying Wayland first...')
-        const selected = await this.#tryDisplayServer(wayland)
-        if (selected) {
-            return selected
-        }
-
-        this.#log.info('Wayland not available, trying Xvfb fallback...')
-        return this.#tryDisplayServer(xvfb)
-    }
-
-    // One place for the try/return that the four selection branches share.
-    async #tryDisplayServer(displayServer: DisplayServer): Promise<DisplayServer | null> {
-        if (await this.#ensureDisplayServerAvailable(displayServer)) {
-            return displayServer
-        }
+        this.#log.warn('No display server could be started; continuing without a virtual display')
         return null
     }
 
-    async #ensureDisplayServerAvailable(displayServer: DisplayServer): Promise<boolean> {
-        if (await displayServer.isAvailable()) {
-            this.#log.info(`${displayServer.name} is already available`)
-            return true
-        }
+    // Yielded lazily, so a server that starts means nothing later is probed or installed.
+    // Installed servers come first, so an existing Xvfb is used before Weston is installed.
+    async *#candidates(): AsyncGenerator<DisplayServer> {
+        const all = [this.#wayland, this.#xvfb]
+        const preferred = all.filter((displayServer) => displayServer.name === this.#displayServerPreference)
+        const order = preferred.length > 0 ? preferred : all
 
-        if (!this.#autoInstall) {
-            this.#log.warn(
-                `${displayServer.name} not found. Skipping automatic installation. To enable auto-install, set 'displayServerAutoInstall: true' in your WDIO config.`
-            )
-            return false
+        const missing: DisplayServer[] = []
+        for (const displayServer of order) {
+            if (await displayServer.isAvailable()) {
+                yield displayServer
+            } else {
+                missing.push(displayServer)
+            }
         }
-
-        this.#log.info(`Auto-installing ${displayServer.name}...`)
-        return await displayServer.install({
-            mode: this.#autoInstallMode,
-            command: this.#autoInstallCommand
-        })
+        for (const displayServer of missing) {
+            if (!this.#autoInstall) {
+                this.#log.warn(`${displayServer.name} not found. To enable auto-install, set 'displayServerAutoInstall: true' in your WDIO config.`)
+                continue
+            }
+            // Probe before and after: a custom install command is shared by both servers,
+            // so an earlier install may have provided this one, or provided the other instead.
+            if (!await displayServer.isAvailable()) {
+                this.#log.info(`Auto-installing ${displayServer.name}...`)
+                if (!await displayServer.install({ mode: this.#autoInstallMode, command: this.#autoInstallCommand })) {
+                    continue
+                }
+                if (!await displayServer.isAvailable()) {
+                    this.#log.warn(`${displayServer.name} still not found after installing`)
+                    continue
+                }
+            }
+            yield displayServer
+        }
     }
 
     getDisplayServer(): DisplayServer | null {
         return this.#displayServer
-    }
-
-    async executeWithRetry<T>(
-        commandFn: () => Promise<T>,
-        context: string = 'display server operation'
-    ): Promise<T> {
-        return executeWithRetry({
-            fn: commandFn,
-            maxRetries: DAEMON_START_MAX_RETRIES,
-            retryDelay: DAEMON_START_RETRY_DELAY_MS,
-            log: this.#log,
-            context,
-        })
     }
 }
 

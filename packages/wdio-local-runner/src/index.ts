@@ -32,7 +32,11 @@ export default class LocalRunner {
      * Runs before any service `onPrepare`, so drivers those services start inherit the display.
      */
     async initialize() {
-        this.daemon = await startDisplayDaemonFromConfig(this.config)
+        try {
+            this.daemon = await startDisplayDaemonFromConfig(this.config)
+        } catch (error) {
+            log.warn('Failed to start a display server; continuing without a virtual display:', error)
+        }
     }
 
     getWorkerCount() {
@@ -139,14 +143,14 @@ export default class LocalRunner {
             }, 250)
         })
 
-        if (this.daemon) {
-            try {
-                await this.daemon.stop()
-            } finally {
-                this.daemon = null
-            }
-        }
-
         return shutdownResult
+    }
+
+    /**
+     * Stop the display daemon. Runs after `onComplete`, so a driver or app a
+     * service started in `onPrepare` still has its display while it is torn down.
+     */
+    async dispose() {
+        await this.daemon?.stop()
     }
 }

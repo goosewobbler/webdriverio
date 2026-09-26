@@ -1,8 +1,8 @@
-import { vi, type Mock } from 'vitest'
+import { vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import type { DisplayDaemon, DisplayServer } from '../src/types.js'
+import type { DisplayDaemon, DisplayDaemonOptions, DisplayServer } from '../src/types.js'
 import type { DisplayServerManager } from '../src/DisplayServerManager.js'
 
 /**
@@ -10,6 +10,7 @@ import type { DisplayServerManager } from '../src/DisplayServerManager.js'
  * lifecycle by emitting 'exit'/'error' and asserting on the spied `kill`.
  */
 export class FakeProc extends EventEmitter {
+    pid: number | undefined = 4242
     killed = false
     exitCode: number | null = null
     signalCode: NodeJS.Signals | null = null
@@ -23,31 +24,31 @@ export class FakeProc extends EventEmitter {
         super.removeListener(event, listener)
         return this
     }
-}
-
-export const createFakeProc = ({ exited = false } = {}) => {
-    const proc = new FakeProc()
-    if (exited) {
-        proc.exitCode = 1 // a failure path then skips the 2s SIGTERM wait
+    // Like Node: 'exit' records the code or signal, and 'close' follows once stdio has drained.
+    emit(event: string | symbol, ...args: any[]): boolean {
+        if (event === 'exit') {
+            this.exitCode = args[0] ?? null
+            this.signalCode = args[1] ?? null
+            setImmediate(() => super.emit('close', ...args))
+        }
+        return super.emit(event, ...args)
     }
-    return proc
 }
 
 export const exitOnKill = (proc: FakeProc) => {
     proc.kill.mockImplementation((signal?: NodeJS.Signals) => {
-        proc.signalCode = signal ?? 'SIGTERM'
-        setImmediate(() => proc.emit('exit', null, proc.signalCode))
+        setImmediate(() => proc.emit('exit', null, signal ?? 'SIGTERM'))
         return true
     })
 }
 
 /**
- * Wire the spawn mock to return a fresh FakeProc, optionally already `exited`.
- * For the happy path, also make the socket-poll `access` resolve immediately;
- * non-happy tests omit `mockAccess` and set their own access sequence inline.
+ * Wire the spawn mock to return a fresh FakeProc. For the happy path, also make
+ * the socket-poll `access` resolve immediately; non-happy tests omit `mockAccess`
+ * and set their own access sequence inline.
  */
-export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock, { exited = false } = {}) => {
-    const proc = createFakeProc({ exited })
+export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock) => {
+    const proc = new FakeProc()
     mockSpawn.mockReturnValue(proc)
     if (mockAccess) {
         mockAccess.mockResolvedValue(undefined)
@@ -56,8 +57,8 @@ export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock, { exited = fals
 }
 
 /** Fake child that reports `display` on fd 3, as Xvfb -displayfd does. */
-export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 99, { exited = false } = {}) => {
-    const proc = createFakeProc({ exited })
+export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 99) => {
+    const proc = new FakeProc()
     const fd3 = new PassThrough()
     proc.stdio = [null, null, null, fd3]
     mockSpawn.mockReturnValue(proc)
@@ -65,6 +66,27 @@ export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 
         setImmediate(() => fd3.write(`${display}\n`))
     }
     return proc
+}
+
+/** Removes the process 'exit' listeners a test's daemons leave behind; `emitExit` runs only those. */
+export const trackExitListeners = () => {
+    let before: NodeJS.ExitListener[] = []
+    const added = () => process.listeners('exit').filter((listener) => !before.includes(listener))
+    beforeEach(() => {
+        before = process.listeners('exit')
+    })
+    afterEach(() => {
+        for (const listener of added()) {
+            process.off('exit', listener)
+        }
+    })
+    return {
+        emitExit: () => {
+            for (const listener of added()) {
+                listener(0)
+            }
+        },
+    }
 }
 
 // Queue execAsync rejections for the package managers probed before `pm`, then a
@@ -112,37 +134,7 @@ export const makeDisplayServer = (overrides: Partial<DisplayServer> = {}): Displ
     ...overrides,
 } as DisplayServer)
 
-/**
- * Pass-through manager: `executeWithRetry` just runs the fn once. Specific
- * tests assert against a real retry policy via `makeRetryManager`.
- */
-export const makeManager = (
-    server: DisplayServer | null,
-    { shouldRun = true }: { shouldRun?: boolean } = {},
-): DisplayServerManager => ({
-    shouldRun: () => shouldRun,
-    init: vi.fn().mockResolvedValue(server !== null),
-    getDisplayServer: () => server,
-    executeWithRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}) as unknown as DisplayServerManager
-
-/**
- * Manager whose `executeWithRetry` runs the real 3-attempt loop, so tests can
- * assert the configured retry policy is honoured end-to-end.
- */
-export const makeRetryManager = (server: DisplayServer): DisplayServerManager => ({
-    shouldRun: () => true,
-    init: vi.fn().mockResolvedValue(true),
-    getDisplayServer: () => server,
-    executeWithRetry: vi.fn(async (fn: () => Promise<unknown>) => {
-        let lastError: unknown
-        for (let i = 0; i < 3; i++) {
-            try {
-                return await fn()
-            } catch (err) {
-                lastError = err
-            }
-        }
-        throw lastError
-    }),
+/** Manager fake whose startDaemon() starts `server`. */
+export const makeManager = (server: DisplayServer): DisplayServerManager => ({
+    startDaemon: vi.fn(async (options?: DisplayDaemonOptions) => server.startDaemon(options)),
 }) as unknown as DisplayServerManager

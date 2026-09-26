@@ -272,6 +272,16 @@ test('starts a display-server daemon during initialize() when one is needed', as
     expect(displayServer.startDisplayDaemonFromConfig).toHaveBeenCalledWith(config)
 })
 
+test('continues without a display when starting the daemon throws', async () => {
+    const displayServer = await import('@wdio/display-server')
+    vi.mocked(displayServer.startDisplayDaemonFromConfig).mockRejectedValueOnce(new Error('mkdtemp ENOSPC'))
+
+    const runner = new LocalRunner({} as never, { displayServerEnabled: true } as WebdriverIO.Config)
+
+    await expect(runner.initialize()).resolves.toBeUndefined()
+    expect(runner['daemon']).toBeNull()
+})
+
 test('shuts down cleanly when startDisplayDaemonFromConfig returns null', async () => {
     const displayServer = await import('@wdio/display-server')
     vi.mocked(displayServer.startDisplayDaemonFromConfig).mockResolvedValueOnce(null)
@@ -280,11 +290,10 @@ test('shuts down cleanly when startDisplayDaemonFromConfig returns null', async 
     await runner.initialize()
 
     expect(displayServer.startDisplayDaemonFromConfig).toHaveBeenCalledTimes(1)
-    // No daemon was started, so shutdown shouldn't try to stop anything.
     await runner.shutdown()
 })
 
-test('stops the daemon during shutdown() when one was started in initialize()', async () => {
+test('keeps the daemon through shutdown() and stops it in dispose()', async () => {
     const displayServer = await import('@wdio/display-server')
     const stopSpy = vi.fn().mockResolvedValue(undefined)
     vi.mocked(displayServer.startDisplayDaemonFromConfig).mockResolvedValueOnce({ stop: stopSpy })
@@ -292,6 +301,10 @@ test('stops the daemon during shutdown() when one was started in initialize()', 
     const runner = new LocalRunner({} as never, { displayServerEnabled: true } as any)
     await runner.initialize()
     await runner.shutdown()
+
+    expect(stopSpy).not.toHaveBeenCalled() // a driver started in onPrepare still needs the display during onComplete
+
+    await runner.dispose()
 
     expect(stopSpy).toHaveBeenCalledTimes(1)
 })

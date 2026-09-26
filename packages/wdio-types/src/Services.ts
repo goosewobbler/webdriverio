@@ -7,6 +7,8 @@ import type { Worker } from './Workers.js'
 export interface RunnerInstance {
     initialize(): Promise<void>
     shutdown(): Promise<boolean>
+    /** Release what `onComplete` may still need (e.g. a display server); the launcher calls it after that hook. */
+    dispose?(): Promise<void>
     closeSession?: (cid: number) => Promise<void>
     getWorkerCount(): number
     run(args: any): Worker
