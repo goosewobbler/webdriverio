@@ -24,31 +24,31 @@ export class FakeProc extends EventEmitter {
         super.removeListener(event, listener)
         return this
     }
-}
-
-export const createFakeProc = ({ exited = false } = {}) => {
-    const proc = new FakeProc()
-    if (exited) {
-        proc.exitCode = 1 // a failure path then skips the 2s SIGTERM wait
+    // Like Node: 'exit' records the code or signal, and 'close' follows once stdio has drained.
+    emit(event: string | symbol, ...args: any[]): boolean {
+        if (event === 'exit') {
+            this.exitCode = args[0] ?? null
+            this.signalCode = args[1] ?? null
+            setImmediate(() => super.emit('close', ...args))
+        }
+        return super.emit(event, ...args)
     }
-    return proc
 }
 
 export const exitOnKill = (proc: FakeProc) => {
     proc.kill.mockImplementation((signal?: NodeJS.Signals) => {
-        proc.signalCode = signal ?? 'SIGTERM'
-        setImmediate(() => proc.emit('exit', null, proc.signalCode))
+        setImmediate(() => proc.emit('exit', null, signal ?? 'SIGTERM'))
         return true
     })
 }
 
 /**
- * Wire the spawn mock to return a fresh FakeProc, optionally already `exited`.
- * For the happy path, also make the socket-poll `access` resolve immediately;
- * non-happy tests omit `mockAccess` and set their own access sequence inline.
+ * Wire the spawn mock to return a fresh FakeProc. For the happy path, also make
+ * the socket-poll `access` resolve immediately; non-happy tests omit `mockAccess`
+ * and set their own access sequence inline.
  */
-export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock, { exited = false } = {}) => {
-    const proc = createFakeProc({ exited })
+export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock) => {
+    const proc = new FakeProc()
     mockSpawn.mockReturnValue(proc)
     if (mockAccess) {
         mockAccess.mockResolvedValue(undefined)
@@ -57,8 +57,8 @@ export const arrangeSpawn = (mockSpawn: Mock, mockAccess?: Mock, { exited = fals
 }
 
 /** Fake child that reports `display` on fd 3, as Xvfb -displayfd does. */
-export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 99, { exited = false } = {}) => {
-    const proc = createFakeProc({ exited })
+export const arrangeDisplayFdSpawn = (mockSpawn: Mock, display: number | null = 99) => {
+    const proc = new FakeProc()
     const fd3 = new PassThrough()
     proc.stdio = [null, null, null, fd3]
     mockSpawn.mockReturnValue(proc)
