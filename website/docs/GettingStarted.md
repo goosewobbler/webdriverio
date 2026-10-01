@@ -196,3 +196,5 @@ More videos are on the [official YouTube channel](https://youtube.com/@webdriver
 - Learn how to [select elements](/docs/selectors) and write [assertions](/docs/assertion)
 - Configure the test runner in [`wdio.conf.ts`](/docs/configurationfile)
 - Get help on [Discord](https://discord.webdriver.io)
+
+<!-- paths-filter test -->

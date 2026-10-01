@@ -24,3 +24,5 @@ you do not install `@wdio/session` or `@wdio/cli` first. For the full guide, see
 [webdriver.io/docs/session](https://webdriver.io/docs/session).
 Check a machine with `npx wdio session doctor`. Agents install the skill with
 `npx wdio session skill --install .`.
+
+<!-- paths-filter test -->
