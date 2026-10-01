@@ -53,3 +53,5 @@ For more information on [options](https://webdriver.io/docs/options#webdriver-op
         <img src="https://webdriver.io/img/sponsors/momentic_black.svg" alt="Momentic" width="300" />
     </a>
 </p>
+
+<!-- paths-filter test -->
